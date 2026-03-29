@@ -1,0 +1,12 @@
+{
+  "domain": "itho_wifi",
+  "name": "IthoWiFi",
+  "codeowners": ["@arjenhiemstra"],
+  "config_flow": true,
+  "documentation": "https://github.com/arjenhiemstra/ithowifi-ha-integration",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/arjenhiemstra/ithowifi-ha-integration/issues",
+  "requirements": [],
+  "version": "0.2.0"
+}

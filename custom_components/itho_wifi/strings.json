@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to IthoWiFi add-on",
+        "description": "Enter the IP address or hostname of your IthoWiFi add-on. Authentication is only needed if API security is enabled on the device.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "rf_source": {
+        "title": "RF Standalone — Select data source",
+        "description": "The add-on is in RF standalone mode. Select which tracked RF source to use for sensor data.",
+        "data": {
+          "rf_source": "RF source"
+        }
+      },
+      "sensors": {
+        "title": "Select sensors ({device_type})",
+        "description": "Choose which sensors and diagnostic items to include. You can change this later in the integration options.",
+        "data": {
+          "sensors": "Sensors",
+          "diagnostics": "Diagnostic items"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the device",
+      "invalid_auth": "Authentication failed",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This device is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure sensors",
+        "description": "Select which sensors and diagnostic items to include.",
+        "data": {
+          "sensors": "Sensors",
+          "diagnostics": "Diagnostic items"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": { "name": "Temperature" },
+      "humidity": { "name": "Humidity" },
+      "ppmw": { "name": "Absolute humidity" },
+      "speed_status": { "name": "Speed status" },
+      "exhaust_fan_speed": { "name": "Exhaust fan speed" },
+      "inlet_fan_speed": { "name": "Inlet fan speed" },
+      "fan_speed_rpm": { "name": "Fan speed" },
+      "fan_setpoint_rpm": { "name": "Fan setpoint" },
+      "ventilation_setpoint": { "name": "Ventilation setpoint" },
+      "remaining_time": { "name": "Remaining time" },
+      "co2_level": { "name": "CO2 level" },
+      "indoor_humidity": { "name": "Indoor humidity" },
+      "indoor_temperature": { "name": "Indoor temperature" },
+      "outdoor_temperature": { "name": "Outdoor temperature" },
+      "exhaust_temperature": { "name": "Exhaust temperature" },
+      "supply_temperature": { "name": "Supply temperature" },
+      "bypass_position": { "name": "Bypass position" },
+      "fan_info": { "name": "Fan info" },
+      "filter_dirty": { "name": "Filter dirty" },
+      "internal_fault": { "name": "Internal fault" },
+      "error_code": { "name": "Error code" },
+      "total_operation_hours": { "name": "Total operation hours" },
+      "startup_counter": { "name": "Startup counter" },
+      "postheat": { "name": "Post-heat" },
+      "preheat": { "name": "Pre-heat" },
+      "inflow": { "name": "Inlet airflow" },
+      "exhaust_flow": { "name": "Exhaust airflow" }
+    }
+  }
+}

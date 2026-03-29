@@ -1,0 +1,74 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbinden met IthoWiFi add-on",
+        "description": "Voer het IP-adres of de hostnaam van je IthoWiFi add-on in. Authenticatie is alleen nodig als API-beveiliging is ingeschakeld op het apparaat.",
+        "data": {
+          "host": "Host",
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord"
+        }
+      },
+      "sensors": {
+        "title": "Sensoren selecteren ({device_type})",
+        "description": "Kies welke sensoren en diagnostische items je wilt opnemen. Dit kan later worden aangepast via de integratie-opties.",
+        "data": {
+          "sensors": "Sensoren",
+          "diagnostics": "Diagnostische items"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met het apparaat",
+      "invalid_auth": "Authenticatie mislukt",
+      "unknown": "Onverwachte fout"
+    },
+    "abort": {
+      "already_configured": "Dit apparaat is al geconfigureerd"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sensoren configureren",
+        "description": "Selecteer welke sensoren en diagnostische items je wilt opnemen.",
+        "data": {
+          "sensors": "Sensoren",
+          "diagnostics": "Diagnostische items"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": { "name": "Temperatuur" },
+      "humidity": { "name": "Luchtvochtigheid" },
+      "ppmw": { "name": "Absolute luchtvochtigheid" },
+      "speed_status": { "name": "Snelheidsstatus" },
+      "exhaust_fan_speed": { "name": "Afvoer ventilatorsnelheid" },
+      "inlet_fan_speed": { "name": "Aanvoer ventilatorsnelheid" },
+      "fan_speed_rpm": { "name": "Ventilatorsnelheid" },
+      "fan_setpoint_rpm": { "name": "Ventilator setpoint" },
+      "ventilation_setpoint": { "name": "Ventilatie setpoint" },
+      "remaining_time": { "name": "Resterende tijd" },
+      "co2_level": { "name": "CO2-niveau" },
+      "indoor_humidity": { "name": "Luchtvochtigheid binnen" },
+      "indoor_temperature": { "name": "Temperatuur binnen" },
+      "outdoor_temperature": { "name": "Temperatuur buiten" },
+      "exhaust_temperature": { "name": "Afvoertemperatuur" },
+      "supply_temperature": { "name": "Aanvoertemperatuur" },
+      "bypass_position": { "name": "Bypasspositie" },
+      "fan_info": { "name": "Ventilator stand" },
+      "filter_dirty": { "name": "Filter vervuild" },
+      "internal_fault": { "name": "Interne fout" },
+      "error_code": { "name": "Foutcode" },
+      "total_operation_hours": { "name": "Totaal bedrijfsuren" },
+      "startup_counter": { "name": "Opstartteller" },
+      "postheat": { "name": "Naverwarming" },
+      "preheat": { "name": "Voorverwarming" },
+      "inflow": { "name": "Aanvoer luchtstroom" },
+      "exhaust_flow": { "name": "Afvoer luchtstroom" }
+    }
+  }
+}
