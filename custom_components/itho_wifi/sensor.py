@@ -25,6 +25,11 @@ from homeassistant.const import (
     UnitOfTime,
     UnitOfVolumeFlowRate,
 )
+try:
+    from homeassistant.const import UnitOfEnergy as _UnitOfEnergy
+    _MWH = UnitOfEnergy.MEGA_WATT_HOUR  # type: ignore[attr-defined]
+except AttributeError:
+    _MWH = "MWh"
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -87,6 +92,37 @@ _UNIT_MAP: dict[str, tuple[str | None, SensorDeviceClass | None, SensorStateClas
     "pulse": ("pulses", None, SensorStateClass.MEASUREMENT, None),
     "pls": ("pulses", None, SensorStateClass.MEASUREMENT, None),
     "puls": ("pulses", None, SensorStateClass.MEASUREMENT, None),
+}
+
+
+# Map key suffixes (after underscore) to sensor metadata.
+# Handles Itho WPU-style keys like "boilertemp-down_c", "e-consumption_kwh", etc.
+# Each entry: (native_unit, device_class_or_None, state_class_or_None, icon_or_None)
+# Checked in order — more specific suffixes first.
+_SUFFIX_MAP: dict[str, tuple[str | None, "SensorDeviceClass | None", "SensorStateClass | None", str | None]] = {
+    # Energy — cumulative counters
+    "_kwh":  (UnitOfEnergy.KILO_WATT_HOUR,                   SensorDeviceClass.ENERGY,            SensorStateClass.TOTAL_INCREASING, None),
+    "_mwh":  (_MWH,                                           SensorDeviceClass.ENERGY,            SensorStateClass.TOTAL_INCREASING, None),
+    # Temperature
+    "_c":    (UnitOfTemperature.CELSIUS,                      SensorDeviceClass.TEMPERATURE,       SensorStateClass.MEASUREMENT,      "mdi:thermometer"),
+    # Temperature delta
+    "_k":    ("K",                                            None,                                SensorStateClass.MEASUREMENT,      "mdi:thermometer"),
+    # Pressure
+    "_bar":  (UnitOfPressure.BAR,                             SensorDeviceClass.PRESSURE,          SensorStateClass.MEASUREMENT,      None),
+    # Electric current
+    "_a":    (UnitOfElectricCurrent.AMPERE,                   SensorDeviceClass.CURRENT,           SensorStateClass.MEASUREMENT,      None),
+    # Percentage (pump speed, valve position, heat demand, etc.)
+    "_perc": (PERCENTAGE,                                     None,                                SensorStateClass.MEASUREMENT,      None),
+    # Pulses (expansion valve)
+    "_pls":  ("pulses",                                       None,                                SensorStateClass.MEASUREMENT,      None),
+    # Time — runtime hours are cumulative counters; sec/min are timers that reset
+    "_h":    (UnitOfTime.HOURS,                               SensorDeviceClass.DURATION,          SensorStateClass.TOTAL_INCREASING, "mdi:clock-outline"),
+    "_min":  (UnitOfTime.MINUTES,                             SensorDeviceClass.DURATION,          SensorStateClass.MEASUREMENT,      "mdi:timer-outline"),
+    "_sec":  (UnitOfTime.SECONDS,                             SensorDeviceClass.DURATION,          SensorStateClass.MEASUREMENT,      "mdi:timer-outline"),
+    # Volume flow rate
+    "_m3h":  (UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,    SensorDeviceClass.VOLUME_FLOW_RATE,  SensorStateClass.MEASUREMENT,      "mdi:weather-windy"),
+    "_lh":   ("L/h",                                          SensorDeviceClass.VOLUME_FLOW_RATE,  SensorStateClass.MEASUREMENT,      "mdi:pump"),
+    "_lthr": ("L/h",                                          SensorDeviceClass.VOLUME_FLOW_RATE,  SensorStateClass.MEASUREMENT,      "mdi:pump"),
 }
 
 
@@ -244,7 +280,23 @@ def _description_from_key(key: str, value: Any = None) -> SensorEntityDescriptio
                 unit_raw, key,
             )
 
-    # 2. Merge keyword hints — hints override unit defaults only for:
+    # 1b. Unit from key suffix (e.g. _c -> Celsius, _kwh -> kWh, _bar -> bar)
+    #     Only applies when step 1 found no parenthesised unit.
+    if unit_raw is None:
+        key_lower = key.lower()
+        for suffix, (native_unit, device_class, state_class, icon) in _SUFFIX_MAP.items():
+            if key_lower.endswith(suffix):
+                kwargs["native_unit_of_measurement"] = native_unit
+                if device_class is not None:
+                    kwargs["device_class"] = device_class
+                if state_class is not None:
+                    kwargs["state_class"] = state_class
+                if icon is not None and "icon" not in hints:
+                    kwargs["icon"] = icon
+                unit_raw = suffix  # mark as resolved so step 3 is skipped
+                break
+
+    # 2. Merge keyword hints -- hints override unit defaults only for:
     #    - entity_category (diagnostic)
     #    - state_class = TOTAL_INCREASING (counter keyword wins)
     #    - state_class = None (enum keyword wins)
@@ -252,7 +304,7 @@ def _description_from_key(key: str, value: Any = None) -> SensorEntityDescriptio
     if "entity_category" in hints:
         kwargs["entity_category"] = hints["entity_category"]
     if hints.get("state_class") is None and "state_class" in hints:
-        # Enum-style field — strip numeric classification
+        # Enum-style field -- strip numeric classification
         kwargs.pop("state_class", None)
         kwargs.pop("device_class", None)
     elif hints.get("state_class") == SensorStateClass.TOTAL_INCREASING:
