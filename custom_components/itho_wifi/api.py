@@ -156,11 +156,17 @@ class IthoWiFiApi:
     async def set_speed(
         self, speed: int, timer: int | None = None
     ) -> dict[str, Any]:
-        """Set fan speed (0-255), optionally with timer."""
+        """Set fan speed (0-255), optionally with timer. Falls back to RF."""
         data: dict[str, Any] = {"speed": speed}
         if timer is not None:
             data["timer"] = timer
-        return await self._request("POST", API_COMMAND, json_data=data)
+        try:
+            return await self._request("POST", API_COMMAND, json_data=data)
+        except IthoWiFiApiError:
+            # I2C failed — send auto + demand via RF
+            await self.send_rf_command("auto")
+            demand = min(round(speed / 2.55 * 2), 200)
+            return await self.send_rf_demand(demand)
 
     async def set_percentage(self, percentage: int) -> dict[str, Any]:
         """Set fan percentage (0-100)."""

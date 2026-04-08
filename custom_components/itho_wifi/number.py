@@ -63,6 +63,12 @@ class IthoFanDemandNumber(IthoEntity, NumberEntity):
         """Return the current fan speed as percentage."""
         if self.coordinator.data is None:
             return None
+        # Prefer Speed status from ithostatus (works when PWM2I2C is off)
+        status = self.coordinator.data.get("status", {})
+        val = status.get("Speed status")
+        if val is not None and val != "not available":
+            return min(round(float(val)), 100)
+        # Fall back to currentspeed
         speed = self.coordinator.data.get("speed", {}).get("currentspeed")
         if speed is None:
             return None
