@@ -21,6 +21,7 @@ API_RF_COMMAND = "/api/v2/rfremote/command"
 API_RF_CO2 = "/api/v2/rfremote/co2"
 API_RF_DEMAND = "/api/v2/rfremote/demand"
 API_DEBUG = "/api/v2/debug"
+API_OTA = "/api/v2/ota"
 
 # Fan preset modes
 PRESET_LOW = "low"

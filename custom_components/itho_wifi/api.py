@@ -14,6 +14,7 @@ from .const import (
     API_DEVICEINFO,
     API_ITHOSTATUS,
     API_LASTCMD,
+    API_OTA,
     API_QUEUE,
     API_RF_CO2,
     API_RF_COMMAND,
@@ -33,6 +34,10 @@ class IthoWiFiApiError(Exception):
 
 class IthoWiFiConnectionError(IthoWiFiApiError):
     """Exception for connection errors."""
+
+
+class IthoWiFiNotFoundError(IthoWiFiApiError):
+    """Exception raised when an endpoint is not available (HTTP 404)."""
 
 
 class IthoWiFiApi:
@@ -77,6 +82,10 @@ class IthoWiFiApi:
             ) as resp:
                 if resp.status == 401:
                     raise IthoWiFiApiError("Authentication failed")
+                if resp.status == 404:
+                    raise IthoWiFiNotFoundError(
+                        f"Endpoint not found: {path}"
+                    )
                 if resp.status != 200:
                     raise IthoWiFiApiError(
                         f"API request failed: {resp.status}"
@@ -218,4 +227,15 @@ class IthoWiFiApi:
         """Reboot the device."""
         return await self._request(
             "POST", API_DEBUG, json_data={"action": "reboot"}
+        )
+
+    async def get_ota(self) -> dict[str, Any]:
+        """Get firmware version info and OTA progress."""
+        data = await self._request("GET", API_OTA)
+        return data.get("ota", data)
+
+    async def start_ota(self, channel: str) -> dict[str, Any]:
+        """Start a firmware OTA install on the given channel ('stable' or 'beta')."""
+        return await self._request(
+            "POST", API_OTA, json_data={"channel": channel}
         )
