@@ -115,7 +115,7 @@ async def async_setup_entry(
         )
         return
 
-    async_add_entities([IthoFirmwareUpdate(api, device_coord)])
+    async_add_entities([IthoFirmwareUpdate(api, device_coord, data)])
 
 
 class IthoFirmwareUpdate(UpdateEntity):
@@ -133,10 +133,15 @@ class IthoFirmwareUpdate(UpdateEntity):
         self,
         api: IthoWiFiApi,
         device_info_coordinator: IthoDeviceInfoCoordinator,
+        integration_data: dict[str, Any],
     ) -> None:
         """Initialize the update entity."""
         self._api = api
         self._device_info_coordinator = device_info_coordinator
+        self._coordinators = [
+            v for v in integration_data.values()
+            if hasattr(v, "ota_in_progress")
+        ]
         info = device_info_coordinator.data or {}
         hwid = info.get("add-on_hwid", "itho")
         self._attr_unique_id = f"{hwid}_firmware"
@@ -224,6 +229,11 @@ class IthoFirmwareUpdate(UpdateEntity):
         self._latest_fw = ota.get("latest_fw") or ""
         self._latest_beta_fw = ota.get("latest_beta_fw") or ""
 
+    def _set_coordinators_ota_flag(self, in_progress: bool) -> None:
+        """Tell all coordinators to pause/resume polling during OTA."""
+        for coord in self._coordinators:
+            coord.ota_in_progress = in_progress
+
     async def async_install(
         self,
         version: str | None,
@@ -241,6 +251,7 @@ class IthoFirmwareUpdate(UpdateEntity):
                 f"Failed to start firmware update: {err}"
             ) from err
 
+        self._set_coordinators_ota_flag(True)
         self._attr_in_progress = True
         self._attr_update_percentage = 0
         self.async_write_ha_state()
@@ -326,6 +337,7 @@ class IthoFirmwareUpdate(UpdateEntity):
                     if now - idle_since >= idle_timeout_after_active:
                         break
         finally:
+            self._set_coordinators_ota_flag(False)
             self._attr_in_progress = False
             self._attr_update_percentage = None
             try:

@@ -44,9 +44,12 @@ class IthoStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.rf_standalone = rf_standalone
         self.rf_source_name = rf_source_name
         self.use_rf_commands = False  # set by __init__.py
+        self.ota_in_progress = False
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch status data from the device."""
+        if self.ota_in_progress:
+            return self.data or {}
         try:
             speed_data = await self.api.get_speed()
             lastcmd_data = await self.api.get_lastcmd()
@@ -81,9 +84,12 @@ class IthoDeviceInfoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=UPDATE_INTERVAL_DEVICEINFO),
         )
         self.api = api
+        self.ota_in_progress = False
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch device info from the device."""
+        if self.ota_in_progress:
+            return self.data or {}
         try:
             return await self.api.get_deviceinfo()
         except IthoWiFiConnectionError as err:
@@ -116,8 +122,16 @@ class IthoRemotesCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # and stops polling the missing endpoint.
         self.vremotes_available: bool = True
 
+    # Set to True by IthoFirmwareUpdate while an OTA install is in
+    # progress. All coordinators check this and skip their update cycle
+    # to avoid heap-exhaustion crashes on the device during download.
+    ota_in_progress: bool = False
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch both remote lists from the device."""
+        if self.ota_in_progress:
+            return self.data or {"rf": [], "vr": []}
+
         rf_list: list[dict[str, Any]] = []
         vr_list: list[dict[str, Any]] = []
 
