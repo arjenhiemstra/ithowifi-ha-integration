@@ -136,7 +136,7 @@ def _normalize_unit(unit_raw: str) -> str:
     - "%RH", "%rh" → "%rh"
     - strips whitespace and lowercases
     """
-    u = unit_raw.strip().lower()
+    u = unit_raw.strip().lower().rstrip(".")
     # Replace underscores with slashes for compound units
     u = u.replace("_", "/")
     # Collapse spaces inside compound units (e.g. "l sec" -> "l/sec")
