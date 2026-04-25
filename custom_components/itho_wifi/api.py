@@ -89,8 +89,12 @@ class IthoWiFiApi:
                         f"Endpoint not found: {path}"
                     )
                 if resp.status != 200:
+                    try:
+                        body = await resp.text()
+                    except Exception:
+                        body = "<unreadable>"
                     raise IthoWiFiApiError(
-                        f"API request failed: {resp.status}"
+                        f"API request failed: {resp.status} — {body}"
                     )
                 data = await resp.json()
                 if data.get("status") == "error":
@@ -181,8 +185,11 @@ class IthoWiFiApi:
             return await self._request(
                 "POST", API_COMMAND, json_data={"command": command}
             )
-        except IthoWiFiApiError:
+        except IthoWiFiApiError as err:
             # I2C command failed (e.g. no virtual remote) — try RF
+            _LOGGER.debug(
+                "send_command(%r) I2C failed (%s), falling back to RF", command, err
+            )
             return await self.send_rf_command(command)
 
     async def set_speed(
@@ -194,8 +201,11 @@ class IthoWiFiApi:
             data["timer"] = timer
         try:
             return await self._request("POST", API_COMMAND, json_data=data)
-        except IthoWiFiApiError:
+        except IthoWiFiApiError as err:
             # I2C failed — send auto + demand via RF
+            _LOGGER.debug(
+                "set_speed(%r) I2C failed (%s), falling back to RF", speed, err
+            )
             await self.send_rf_command("auto")
             demand = min(round(speed / 2.55 * 2), 200)
             return await self.send_rf_demand(demand)
