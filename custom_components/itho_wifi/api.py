@@ -180,35 +180,53 @@ class IthoWiFiApi:
         )
 
     async def send_command(self, command: str) -> dict[str, Any]:
-        """Send a named fan command. Falls back to RF if I2C fails."""
+        """Send a named fan command. Falls back to vremote on rejection.
+
+        Only called when use_rf_commands=False (RF-CO2 / RF-standalone
+        users go through send_rf_command directly). The /api/v2/command
+        path requires a pwm2i2c-capable device (CVE/HRU200); other I2C
+        devices like HRU-eco get a 400 with the firmware-supplied hint
+        to use a virtual remote, which is what the fallback does.
+        """
         try:
             return await self._request(
                 "POST", API_COMMAND, json_data={"command": command}
             )
         except IthoWiFiApiError as err:
-            # I2C command failed (e.g. no virtual remote) — try RF
             _LOGGER.debug(
-                "send_command(%r) I2C failed (%s), falling back to RF", command, err
+                "send_command(%r) direct path failed (%s), falling back to vremote",
+                command, err,
             )
-            return await self.send_rf_command(command)
+            return await self.send_vremote_command(command)
 
     async def set_speed(
         self, speed: int, timer: int | None = None
     ) -> dict[str, Any]:
-        """Set fan speed (0-255), optionally with timer. Falls back to RF."""
+        """Set fan speed (0-255), optionally with timer.
+
+        Only called when use_rf_commands=False. On rejection, falls back
+        to a vremote preset mapped from the requested speed — vremote
+        commands are preset-only, so precision is approximate.
+        """
         data: dict[str, Any] = {"speed": speed}
         if timer is not None:
             data["timer"] = timer
         try:
             return await self._request("POST", API_COMMAND, json_data=data)
         except IthoWiFiApiError as err:
-            # I2C failed — send auto + demand via RF
+            if speed < 1:
+                preset = "away"
+            elif speed < 86:
+                preset = "low"
+            elif speed < 171:
+                preset = "medium"
+            else:
+                preset = "high"
             _LOGGER.debug(
-                "set_speed(%r) I2C failed (%s), falling back to RF", speed, err
+                "set_speed(%r) direct path failed (%s), falling back to vremote preset %r",
+                speed, err, preset,
             )
-            await self.send_rf_command("auto")
-            demand = min(round(speed / 2.55 * 2), 200)
-            return await self.send_rf_demand(demand)
+            return await self.send_vremote_command(preset)
 
     async def set_percentage(self, percentage: int) -> dict[str, Any]:
         """Set fan percentage (0-100)."""
