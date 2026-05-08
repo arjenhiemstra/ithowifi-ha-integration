@@ -267,16 +267,50 @@ class IthoFan(IthoEntity, FanEntity):
         """Return the RF remote index used for main-fan RF dispatch."""
         return pick_main_fan_rf_index(self._remotes_coordinator)
 
+    def _fan_in_auto(self) -> bool:
+        """Return True only if we can confirm the unit is currently in auto mode.
+
+        Returns False both when the unit is in a fixed mode (low/medium/high/
+        timer/away/...) and when we have no FanInfo data (e.g. RF standalone
+        without an rf_source configured). Used to decide whether to precede
+        the 31E0 demand frame with an "auto" RF command — the unit only
+        accepts demand frames when in auto mode, so we send "auto" first
+        when not confirmed-auto, but skip it when confirmed-auto to avoid
+        the boost-mode side-effect that ignores subsequent lower demands.
+        """
+        if not self.coordinator.data:
+            return False
+        status = self.coordinator.data.get("status") or {}
+
+        # I2C 31DA path: ithostatus dict with "FanInfo" as a top-level key.
+        fi = status.get("FanInfo") or status.get("fan-info")
+        if fi:
+            return str(fi).strip().lower() == "auto"
+
+        # rfstatus path: sources -> measurements31DA -> {name, value}.
+        for src in status.get("sources", []) or []:
+            for m in src.get("measurements31DA", []) or []:
+                if m.get("name") in ("FanInfo", "fan-info"):
+                    v = m.get("value")
+                    if v is not None:
+                        return str(v).strip().lower() == "auto"
+
+        return False
+
     async def async_set_percentage(self, percentage: int) -> None:
         """Set the speed percentage. Tries RF demand first, falls back to speed.
 
-        Sends only the 31E0 demand frame — the previous "auto" precursor
-        caused the unit to ignore subsequent demand values lower than the
-        previous one, breaking "drag slider down" in HA.
+        The unit only accepts a 31E0 demand frame when in auto mode. If
+        we can confirm the unit is already in auto, send only the demand
+        (this avoids the boost-mode side-effect that ignores subsequent
+        lower demands). Otherwise send an "auto" command first to switch
+        the unit into auto mode, then the demand.
         """
         try:
             idx = self._rf_index()
             demand = percentage * 2  # 0-100% → 0-200 demand
+            if not self._fan_in_auto():
+                await self.coordinator.api.send_rf_command("auto", idx)
             await self.coordinator.api.send_rf_demand(demand, index=idx)
         except Exception:
             speed = math.ceil(percentage * 2.55)
