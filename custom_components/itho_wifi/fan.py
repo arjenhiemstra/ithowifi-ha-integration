@@ -268,10 +268,14 @@ class IthoFan(IthoEntity, FanEntity):
         return pick_main_fan_rf_index(self._remotes_coordinator)
 
     async def async_set_percentage(self, percentage: int) -> None:
-        """Set the speed percentage. Tries RF demand first, falls back to speed."""
+        """Set the speed percentage. Tries RF demand first, falls back to speed.
+
+        Sends only the 31E0 demand frame — the previous "auto" precursor
+        caused the unit to ignore subsequent demand values lower than the
+        previous one, breaking "drag slider down" in HA.
+        """
         try:
             idx = self._rf_index()
-            await self.coordinator.api.send_rf_command("auto", idx)
             demand = percentage * 2  # 0-100% → 0-200 demand
             await self.coordinator.api.send_rf_demand(demand, index=idx)
         except Exception:
