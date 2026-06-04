@@ -546,6 +546,11 @@ async def async_setup_entry(
     # Always add last command sensor
     entities.append(IthoLastCommandSensor(status_coord, device_coord))
 
+    # Add-on timer remaining (PWM2I2C timer1/2/3, cook30/60). Firmware
+    # exposes timer_remaining_ms on /api/v2/speed from 3.1.4-beta5+; on
+    # older firmware the sensor will simply stay unavailable.
+    entities.append(IthoTimerRemainingSensor(status_coord, device_coord))
+
     # Device info diagnostic sensors
     entities.append(IthoDeviceInfoSensor(status_coord, device_coord))
 
@@ -619,6 +624,62 @@ class IthoLastCommandSensor(IthoEntity, SensorEntity):
                 lastcmd["timestamp"], tz=timezone.utc
             ).isoformat()
         return attrs
+
+
+class IthoTimerRemainingSensor(IthoEntity, SensorEntity):
+    """Minutes remaining on the add-on-tracked PWM2I2C timer queue.
+
+    For CVE / HRU200 units controlled via PWM2I2C, the timer1/2/3 and
+    cook30/60 buttons drive the fan to a fixed speed for N minutes via
+    the add-on's IthoQueue (the Itho unit itself only sees a PWM speed
+    write, so its protocol-level RemainingTime stays 0). The firmware
+    exposes the head-of-queue remaining time on /api/v2/speed as
+    timer_remaining_ms — this sensor surfaces it as minutes.
+
+    Unavailable when no timer is active or when running against firmware
+    that doesn't expose the field yet (<3.1.4-beta5).
+    """
+
+    _attr_name = "Add-on timer remaining"
+    _attr_icon = "mdi:timer-sand"
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
+
+    def __init__(
+        self,
+        coordinator: IthoStatusCoordinator,
+        device_info_coordinator: IthoDeviceInfoCoordinator,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, device_info_coordinator)
+        info = device_info_coordinator.data or {}
+        self._attr_unique_id = f"{info.get('add-on_hwid', 'itho')}_timer_remaining"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return remaining time in minutes, or None when no timer is active."""
+        if self.coordinator.data is None:
+            return None
+        speed = self.coordinator.data.get("speed", {}) or {}
+        remaining_ms = speed.get("timer_remaining_ms")
+        if remaining_ms is None:
+            return None  # firmware too old
+        if remaining_ms <= 0:
+            return None  # no active timer → "unavailable" in HA
+        return round(remaining_ms / 60000, 1)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Surface the queued speed (0–255) as an attribute."""
+        if self.coordinator.data is None:
+            return {}
+        speed = self.coordinator.data.get("speed", {}) or {}
+        timer_speed = speed.get("timer_speed")
+        if timer_speed is None or timer_speed < 0:
+            return {}
+        return {"timer_speed": timer_speed}
 
 
 class IthoDeviceInfoSensor(IthoEntity, SensorEntity):
