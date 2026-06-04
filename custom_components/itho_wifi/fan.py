@@ -298,21 +298,29 @@ class IthoFan(IthoEntity, FanEntity):
         return False
 
     async def async_set_percentage(self, percentage: int) -> None:
-        """Set the speed percentage. Tries RF demand first, falls back to speed.
+        """Set the speed percentage.
 
-        The unit only accepts a 31E0 demand frame when in auto mode. If
-        we can confirm the unit is already in auto, send only the demand
-        (this avoids the boost-mode side-effect that ignores subsequent
-        lower demands). Otherwise send an "auto" command first to switch
-        the unit into auto mode, then the demand.
+        Dispatch follows the same shape as async_set_preset_mode:
+        * use_rf_commands → 31E0 demand frame, optionally preceded by an
+          "auto" RF command when the unit isn't already in auto mode (the
+          unit only accepts demand frames when in auto; sending "auto"
+          when already in auto produces a boost-mode side-effect that
+          drops subsequent lower demand values).
+        * otherwise → direct PWM speed write via /api/v2/command. On
+          PWM2I2C-only units (no RFT CO2 SEND remote configured) the
+          RF path would only spam firmware error logs and silently fail.
         """
-        try:
-            idx = self._rf_index()
-            demand = percentage * 2  # 0-100% → 0-200 demand
-            if not self._fan_in_auto():
-                await self.coordinator.api.send_rf_command("auto", idx)
-            await self.coordinator.api.send_rf_demand(demand, index=idx)
-        except Exception:
+        if self._use_rf_commands:
+            try:
+                idx = self._rf_index()
+                demand = percentage * 2  # 0-100% → 0-200 demand
+                if not self._fan_in_auto():
+                    await self.coordinator.api.send_rf_command("auto", idx)
+                await self.coordinator.api.send_rf_demand(demand, index=idx)
+            except Exception:
+                speed = math.ceil(percentage * 2.55)
+                await self.coordinator.api.set_speed(speed)
+        else:
             speed = math.ceil(percentage * 2.55)
             await self.coordinator.api.set_speed(speed)
         await self._async_refresh()
