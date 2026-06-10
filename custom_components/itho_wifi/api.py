@@ -112,9 +112,19 @@ class IthoWiFiApi:
             ) from err
 
     async def get_speed(self) -> dict[str, Any]:
-        """Get current fan speed."""
+        """Get current fan speed.
+
+        Forwards the add-on-tracked timer fields from /api/v2/speed
+        (firmware 3.1.4-beta5+) so the "Add-on timer remaining" sensor
+        sees them. Earlier firmware omits the fields; they end up as
+        None and the sensor reports unavailable, which is correct.
+        """
         data = await self._request("GET", API_SPEED)
-        return {"currentspeed": data.get("currentspeed", 0)}
+        return {
+            "currentspeed": data.get("currentspeed", 0),
+            "timer_remaining_ms": data.get("timer_remaining_ms"),
+            "timer_speed": data.get("timer_speed"),
+        }
 
     async def get_status(self) -> dict[str, Any]:
         """Get Itho device status and measurements."""
