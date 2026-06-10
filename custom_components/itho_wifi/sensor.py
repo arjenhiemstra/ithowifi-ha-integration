@@ -659,16 +659,19 @@ class IthoTimerRemainingSensor(IthoEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return remaining time in minutes, or None when no timer is active."""
+        """Return remaining time in minutes, or None when the firmware
+        doesn't expose the field. Returns 0 when no timer is queued so
+        the sensor matches the Itho-side "Remaining time" field (which
+        reports 0, not unknown) and template checks like
+        ``states('sensor.x') | int > 0`` work as expected.
+        """
         if self.coordinator.data is None:
             return None
         speed = self.coordinator.data.get("speed", {}) or {}
         remaining_ms = speed.get("timer_remaining_ms")
         if remaining_ms is None:
-            return None  # firmware too old
-        if remaining_ms <= 0:
-            return None  # no active timer → "unavailable" in HA
-        return round(remaining_ms / 60000, 1)
+            return None  # firmware too old (<3.1.4-beta5) — field not exposed
+        return max(0.0, round(remaining_ms / 60000, 1))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
