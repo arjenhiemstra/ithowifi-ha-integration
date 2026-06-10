@@ -390,7 +390,8 @@ KNOWN_SENSORS: dict[str, SensorEntityDescription] = {
     "RemainingTime (min)": SensorEntityDescription(
         key="RemainingTime (min)",
         translation_key="remaining_time",
-        native_unit_of_measurement="min",
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:timer-outline",
     ),
