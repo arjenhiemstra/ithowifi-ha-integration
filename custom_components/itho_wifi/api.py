@@ -147,6 +147,16 @@ class IthoWiFiApi:
         data = await self._request("GET", API_REMOTES)
         return data.get("remotes", [])
 
+    async def get_remotes_info(self) -> list[dict[str, Any]]:
+        """Get live sensor data from monitored RF remotes.
+
+        Returns the `remotesinfo` array from /api/v2/remotes containing
+        real-time readings (temperature, CO2, setpoints, etc.) for each
+        tracked RF remote slot.
+        """
+        data = await self._request("GET", API_REMOTES)
+        return data.get("remotesinfo", [])
+
     async def get_vremotes(self) -> list[dict[str, Any]]:
         """Get virtual remotes configuration as a list of per-slot dicts.
 
