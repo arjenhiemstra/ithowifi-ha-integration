@@ -750,9 +750,7 @@ class IthoDeviceInfoSensor(IthoEntity, SensorEntity):
 
 
 # Per-remote capability -> sensor metadata. Mirrors the firmware's own MQTT
-# discovery (HADiscovery.cpp) for received-RF sensor values. Scaling note:
-# co2 (ppm), hum (%) and battery (%) arrive already in their final unit, but
-# temp/dewpoint/setpoint arrive as centidegrees, so they are scaled x0.01.
+# discovery (HADiscovery.cpp) for received-RF sensor values.
 _REMOTE_CAP_SENSORS: dict[str, dict[str, Any]] = {
     "co2": {
         "name": "CO2", "unit": "ppm", "device_class": SensorDeviceClass.CO2,
@@ -761,7 +759,7 @@ _REMOTE_CAP_SENSORS: dict[str, dict[str, Any]] = {
     "temp": {
         "name": "Temperature", "unit": UnitOfTemperature.CELSIUS,
         "device_class": SensorDeviceClass.TEMPERATURE,
-        "state_class": SensorStateClass.MEASUREMENT, "scale": 0.01,
+        "state_class": SensorStateClass.MEASUREMENT, "scale": 1.0,
     },
     "hum": {
         "name": "Humidity", "unit": PERCENTAGE,
@@ -771,12 +769,12 @@ _REMOTE_CAP_SENSORS: dict[str, dict[str, Any]] = {
     "dewpoint": {
         "name": "Dew point", "unit": UnitOfTemperature.CELSIUS,
         "device_class": SensorDeviceClass.TEMPERATURE,
-        "state_class": SensorStateClass.MEASUREMENT, "scale": 0.01,
+        "state_class": SensorStateClass.MEASUREMENT, "scale": 1.0,
     },
     "setpoint": {
         "name": "Setpoint", "unit": UnitOfTemperature.CELSIUS,
         "device_class": SensorDeviceClass.TEMPERATURE,
-        "state_class": SensorStateClass.MEASUREMENT, "scale": 0.01,
+        "state_class": SensorStateClass.MEASUREMENT, "scale": 1.0,
     },
     "battery": {
         "name": "Battery", "unit": PERCENTAGE,
