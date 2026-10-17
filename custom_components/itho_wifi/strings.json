@@ -38,6 +38,13 @@
         "data": {
           "remote_sensors": "Remotes to expose as sensors"
         }
+      },
+      "thermostats": {
+        "title": "Spider thermostats ({device_type})",
+        "description": "The add-on has discovered these Itho Spider room thermostats. Each selected Spider becomes its own device with a climate entity (room temperature, setpoint, heating). You can change this later in the integration options.",
+        "data": {
+          "thermostats": "Spiders to add as thermostats"
+        }
       }
     },
     "error": {
@@ -53,13 +60,14 @@
     "step": {
       "init": {
         "title": "Configure IthoWiFi",
-        "description": "Select which sensors and diagnostic items to include, which RF or virtual remotes to expose as individual fan entities, and which remotes to expose as sensors.",
+        "description": "Select which sensors and diagnostic items to include, which RF or virtual remotes to expose as individual fan entities, and which remotes to expose as sensors. Itho Spider thermostats the add-on knows about can be added as climate entities.",
         "data": {
           "sensors": "Sensors",
           "diagnostics": "Diagnostic items",
           "rf_source": "RF source",
           "remote_fans": "RF and Virtual Remote devices",
-          "remote_sensors": "Remotes to expose as sensors"
+          "remote_sensors": "Remotes to expose as sensors",
+          "thermostats": "Itho Spider thermostats"
         }
       }
     }
@@ -93,6 +101,19 @@
       "preheat": { "name": "Pre-heat" },
       "inflow": { "name": "Inlet airflow" },
       "exhaust_flow": { "name": "Exhaust airflow" }
+    }
+  },
+  "issues": {
+    "spider_found": {
+      "title": "Itho Spider thermostat found ({rf_id})",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Add Itho Spider {rf_id} as thermostat",
+            "description": "The IthoWiFi add-on found an Itho Spider room thermostat ({rf_id}). Add it to Home Assistant as a thermostat, so you can see the room temperature and change the setpoint? Choose Ignore on this issue if you don't want it. You can change this later in the integration options."
+          }
+        }
+      }
     }
   }
 }

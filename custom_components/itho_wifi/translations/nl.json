@@ -31,6 +31,13 @@
         "data": {
           "remote_sensors": "Afstandsbedieningen als sensor aanbieden"
         }
+      },
+      "thermostats": {
+        "title": "Spider-thermostaten ({device_type})",
+        "description": "De add-on heeft deze Itho Spider-kamerthermostaten gevonden. Elke geselecteerde Spider wordt een eigen apparaat met een klimaat-entiteit (kamertemperatuur, setpoint, verwarming). Dit kan later worden aangepast via de integratie-opties.",
+        "data": {
+          "thermostats": "Spiders als thermostaat toevoegen"
+        }
       }
     },
     "error": {
@@ -46,13 +53,14 @@
     "step": {
       "init": {
         "title": "IthoWiFi configureren",
-        "description": "Selecteer welke sensoren en diagnostische items je wilt opnemen, en welke RF- of virtuele afstandsbedieningen als individuele fan-entiteiten aangeboden moeten worden.",
+        "description": "Selecteer welke sensoren en diagnostische items je wilt opnemen, en welke RF- of virtuele afstandsbedieningen als individuele fan-entiteiten aangeboden moeten worden. Itho Spider-thermostaten die de add-on kent, kun je als klimaat-entiteit toevoegen.",
         "data": {
           "sensors": "Sensoren",
           "diagnostics": "Diagnostische items",
           "rf_source": "RF-bron",
           "remote_fans": "RF- en Virtuele-afstandsbedieningen",
-          "remote_sensors": "Afstandsbedieningen als sensor aanbieden"
+          "remote_sensors": "Afstandsbedieningen als sensor aanbieden",
+          "thermostats": "Itho Spider-thermostaten"
         }
       }
     }
@@ -86,6 +94,19 @@
       "preheat": { "name": "Voorverwarming" },
       "inflow": { "name": "Aanvoer luchtstroom" },
       "exhaust_flow": { "name": "Afvoer luchtstroom" }
+    }
+  },
+  "issues": {
+    "spider_found": {
+      "title": "Itho Spider-thermostaat gevonden ({rf_id})",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Itho Spider {rf_id} toevoegen als thermostaat",
+            "description": "De IthoWiFi add-on heeft een Itho Spider-ruimtethermostaat gevonden ({rf_id}). Toevoegen aan Home Assistant als thermostaat, zodat je de ruimtetemperatuur ziet en de gewenste temperatuur kunt aanpassen? Kies Negeren bij deze melding als je dat niet wilt. Je kunt dit later wijzigen in de opties van de integratie."
+          }
+        }
+      }
     }
   }
 }

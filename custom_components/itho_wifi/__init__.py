@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import IthoWiFiApi
+from .repairs import async_check_spider_issues
 from .const import CONF_RF_SOURCE, DOMAIN
 from .coordinator import (
     IthoDeviceInfoCoordinator,
@@ -22,6 +23,7 @@ from .coordinator import (
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
+    Platform.CLIMATE,
     Platform.FAN,
     Platform.SENSOR,
     Platform.BUTTON,
@@ -92,6 +94,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Offer Itho Spider thermostats the add-on knows about as climate entities
+    # (a fixable Repairs issue per Spider not added yet), now and on every poll.
+    async_check_spider_issues(hass, entry, remotes_coordinator.data)
+    entry.async_on_unload(
+        remotes_coordinator.async_add_listener(
+            lambda: async_check_spider_issues(hass, entry, remotes_coordinator.data)
+        )
+    )
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 

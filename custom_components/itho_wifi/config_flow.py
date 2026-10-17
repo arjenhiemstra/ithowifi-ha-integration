@@ -29,6 +29,10 @@ from .const import (
     CONF_DIAGNOSTICS,
     CONF_REMOTE_FANS,
     CONF_REMOTE_SENSORS,
+    CONF_THERMOSTATS,
+    format_rf_uid,
+    is_spider_thermostat,
+    remote_rf_uid,
     CONF_RF_SOURCE,
     CONF_SENSORS,
     DIAGNOSTIC_KEYS,
@@ -113,6 +117,18 @@ def _build_remote_sensor_options(
     return options
 
 
+def _build_thermostat_options(rf_list: list[dict[str, Any]]) -> list[SelectOptionDict]:
+    """Build selector options for Itho Spider thermostats, keyed by the Spider's RF id."""
+    return [
+        SelectOptionDict(
+            value=remote_rf_uid(r),
+            label=f"{r.get('name') or 'Spider'} {format_rf_uid(remote_rf_uid(r))} (RF Remote {r.get('index', 0)})",
+        )
+        for r in rf_list
+        if is_spider_thermostat(r)
+    ]
+
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
@@ -145,6 +161,8 @@ class IthoWiFiConfigFlow(ConfigFlow, domain=DOMAIN):
         self._remote_fan_default: list[str] = []
         self._selected_remote_fans: list[str] = []
         self._remote_sensor_opts: list[SelectOptionDict] = []
+        self._selected_remote_sensors: list[str] = []
+        self._thermostat_opts: list[SelectOptionDict] | None = None
 
     async def async_step_user(
         self,
@@ -413,10 +431,10 @@ class IthoWiFiConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._remote_sensor_opts = []
 
         if user_input is not None or not self._remote_sensor_opts:
-            selected = (
+            self._selected_remote_sensors = (
                 user_input.get(CONF_REMOTE_SENSORS, []) if user_input else []
             )
-            return self._finalize_entry(self._selected_remote_fans, selected)
+            return await self.async_step_thermostats()
 
         schema = vol.Schema(
             {
@@ -440,10 +458,63 @@ class IthoWiFiConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
+    async def async_step_thermostats(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Offer the Itho Spider thermostats the add-on has discovered as climate entities.
+
+        Pre-checked: a Spider is only on the add-on after the user ran its discovery.
+        Skipped silently when there are none (or the firmware is too old).
+        """
+        if self._thermostat_opts is None:
+            try:
+                session = async_get_clientsession(self.hass)
+                api = IthoWiFiApi(
+                    self._host, session, self._username, self._password
+                )
+                rf_list = await api.get_remotes()
+                self._thermostat_opts = _build_thermostat_options(rf_list)
+            except Exception as ex:  # noqa: BLE001
+                _LOGGER.warning(
+                    "Could not fetch Spider thermostats for setup: %s", ex
+                )
+                self._thermostat_opts = []
+
+        if user_input is not None or not self._thermostat_opts:
+            selected = user_input.get(CONF_THERMOSTATS, []) if user_input else []
+            return self._finalize_entry(
+                self._selected_remote_fans, self._selected_remote_sensors, selected
+            )
+
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_THERMOSTATS,
+                    default=[o["value"] for o in self._thermostat_opts],
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=self._thermostat_opts,
+                        multiple=True,
+                        mode=SelectSelectorMode.LIST,
+                    )
+                )
+            }
+        )
+
+        return self.async_show_form(
+            step_id="thermostats",
+            data_schema=schema,
+            description_placeholders={
+                "device_type": self._deviceinfo.get("itho_devtype", "Unknown"),
+            },
+        )
+
     def _finalize_entry(
         self,
         remote_fans: list[str],
         remote_sensors: list[str] | None = None,
+        thermostats: list[str] | None = None,
     ) -> ConfigFlowResult:
         """Create the config entry with everything gathered across steps."""
         title = f"Itho {self._deviceinfo.get('itho_devtype', 'WiFi')}"
@@ -460,6 +531,7 @@ class IthoWiFiConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_RF_SOURCE: getattr(self, "_selected_rf_source", ""),
                 CONF_REMOTE_FANS: remote_fans,
                 CONF_REMOTE_SENSORS: remote_sensors or [],
+                CONF_THERMOSTATS: thermostats or [],
             },
         )
 
@@ -483,6 +555,10 @@ class IthoWiFiOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Handle options flow."""
         if user_input is not None:
+            # Keep the thermostat selection when that field was not shown
+            # (no Spiders listed, or the add-on was briefly unreachable).
+            if CONF_THERMOSTATS not in user_input and CONF_THERMOSTATS in self._config_entry.options:
+                user_input = {**user_input, CONF_THERMOSTATS: self._config_entry.options[CONF_THERMOSTATS]}
             return self.async_create_entry(data=user_input)
 
         # Fetch current status to get available keys
@@ -496,6 +572,7 @@ class IthoWiFiOptionsFlow(OptionsFlow):
         rf_sources: list[str] = []
         remote_fan_opts: list[SelectOptionDict] = []
         remote_sensor_opts: list[SelectOptionDict] = []
+        thermostat_opts: list[SelectOptionDict] = []
         demandflow_default_remote_fans: list[str] = []
         is_df = False
 
@@ -526,6 +603,7 @@ class IthoWiFiOptionsFlow(OptionsFlow):
                 rf_list, vr_list
             )
             remote_sensor_opts = _build_remote_sensor_options(rf_list, vr_list)
+            thermostat_opts = _build_thermostat_options(rf_list)
 
             if rf_standalone:
                 rfdata = await api.get_rfstatus()
@@ -660,6 +738,22 @@ class IthoWiFiOptionsFlow(OptionsFlow):
             ] = SelectSelector(
                 SelectSelectorConfig(
                     options=remote_sensor_opts,
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                )
+            )
+
+        if thermostat_opts:
+            current_thermostats = self._config_entry.options.get(CONF_THERMOSTATS) or []
+            valid_thermostats = {o["value"] for o in thermostat_opts}
+            schema_dict[
+                vol.Optional(
+                    CONF_THERMOSTATS,
+                    default=[t for t in current_thermostats if t in valid_thermostats],
+                )
+            ] = SelectSelector(
+                SelectSelectorConfig(
+                    options=thermostat_opts,
                     multiple=True,
                     mode=SelectSelectorMode.LIST,
                 )

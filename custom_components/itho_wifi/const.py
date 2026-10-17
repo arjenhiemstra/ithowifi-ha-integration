@@ -20,6 +20,7 @@ API_VREMOTE = "/api/v2/vremote"
 API_RF_COMMAND = "/api/v2/rfremote/command"
 API_RF_CO2 = "/api/v2/rfremote/co2"
 API_RF_DEMAND = "/api/v2/rfremote/demand"
+API_RF_SETPOINT = "/api/v2/rfremote/setpoint"
 API_DEBUG = "/api/v2/debug"
 API_OTA = "/api/v2/ota"
 
@@ -73,6 +74,28 @@ CONF_REMOTE_FANS = "remote_fans"
 # temperature, last command, ... — is exposed as sensors), same "vr:<index>" /
 # "rf:<index>" encoding.
 CONF_REMOTE_SENSORS = "remote_sensors"
+# Itho Spider thermostats exposed as climate entities, keyed by the Spider's
+# RF id as 6 hex chars (e.g. "54D3FA") so the entity survives slot changes.
+CONF_THERMOSTATS = "thermostats"
+
+
+def remote_rf_uid(remote: dict) -> str:
+    """Return a remote's RF id as 6 uppercase hex chars ("" if unset)."""
+    rid = remote.get("id") or [0, 0, 0]
+    if len(rid) < 3 or all(b == 0 for b in rid[:3]):
+        return ""
+    return "".join(f"{int(b):02X}" for b in rid[:3])
+
+
+def format_rf_uid(uid: str) -> str:
+    """Format "54D3FA" as "54:D3:FA"."""
+    return ":".join(uid[i : i + 2] for i in range(0, len(uid), 2))
+
+
+def is_spider_thermostat(remote: dict) -> bool:
+    """True if the firmware reports this remote as an Itho Spider thermostat."""
+    caps = remote.get("capabilities")
+    return isinstance(caps, dict) and bool(caps.get("thermostat")) and bool(remote_rf_uid(remote))
 
 # DemandFlow uses per-remote fans only (no main IthoFan). Detected by substring
 # so "DemandFlow" alone matches.

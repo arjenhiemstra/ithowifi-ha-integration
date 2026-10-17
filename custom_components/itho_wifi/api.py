@@ -20,6 +20,7 @@ from .const import (
     API_RF_CO2,
     API_RF_COMMAND,
     API_RF_DEMAND,
+    API_RF_SETPOINT,
     API_RFSTATUS,
     API_SETTINGS,
     API_SPEED,
@@ -282,6 +283,14 @@ class IthoWiFiApi:
             "POST",
             API_RF_DEMAND,
             json_data={"demand": demand, "zone": zone, "index": index},
+        )
+
+    async def set_rf_setpoint(self, index: int, setpoint: float) -> dict[str, Any]:
+        """Set the heating setpoint of an Itho Spider thermostat (RF remote slot)."""
+        return await self._request(
+            "POST",
+            API_RF_SETPOINT,
+            json_data={"index": index, "setpoint": setpoint},
         )
 
     async def reboot(self) -> dict[str, Any]:
