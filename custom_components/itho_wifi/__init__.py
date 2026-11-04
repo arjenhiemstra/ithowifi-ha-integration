@@ -17,7 +17,9 @@ from .const import CONF_RF_SOURCE, DOMAIN
 from .coordinator import (
     IthoDeviceInfoCoordinator,
     IthoRemotesCoordinator,
+    IthoRFStatusCoordinator,
     IthoStatusCoordinator,
+    joined_rf_source_ids,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,12 +87,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning("Initial remotes fetch failed: %s", err)
 
+    # Sensors of a device joined through an RF SEND remote (e.g. an HRU next to
+    # a WPU on I2C). First fetch here so its entities exist right after setup.
+    rfstatus_coordinator = IthoRFStatusCoordinator(hass, api)
+    if joined_rf_source_ids(remotes_coordinator.data):
+        await rfstatus_coordinator.async_refresh()
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "api": api,
         "status_coordinator": status_coordinator,
         "device_coordinator": device_coordinator,
         "remotes_coordinator": remotes_coordinator,
+        "rfstatus_coordinator": rfstatus_coordinator,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

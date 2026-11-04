@@ -22,6 +22,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+REMFUNC_SEND = 5
+
 
 class IthoStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator for frequent status updates (speed, sensors)."""
@@ -156,3 +158,48 @@ class IthoRemotesCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 pass
 
         return {"rf": rf_list, "vr": vr_list}
+
+
+def joined_rf_source_ids(remotes_data: dict[str, Any] | None) -> set[str]:
+    """Return the RF status source ids of devices joined through an RF SEND remote.
+
+    A successful join stores the target's id as the remote's `destid`, and the
+    add-on tracks that target as an RF status source with the same id.
+    """
+    ids: set[str] = set()
+    for remote in (remotes_data or {}).get("rf", []):
+        if remote.get("remfunc") != REMFUNC_SEND:
+            continue
+        dest = remote.get("destid") or [0, 0, 0]
+        if len(dest) == 3 and any(dest):
+            ids.add(f"{dest[0]:02X}:{dest[1]:02X}:{dest[2]:02X}")
+    return ids
+
+
+class IthoRFStatusCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
+    """Polls /api/v2/rfstatus for devices joined through an RF SEND remote.
+
+    Data is keyed by source id. A coordinator only polls while it has
+    listeners, so this adds no requests without such a device.
+    """
+
+    def __init__(self, hass: HomeAssistant, api: IthoWiFiApi) -> None:
+        """Initialize the RF status coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_rfstatus",
+            update_interval=timedelta(seconds=UPDATE_INTERVAL_STATUS),
+        )
+        self.api = api
+        self.ota_in_progress = False
+
+    async def _async_update_data(self) -> dict[str, dict[str, Any]]:
+        """Fetch the tracked RF status sources."""
+        if self.ota_in_progress:
+            return self.data or {}
+        try:
+            rfstatus = await self.api.get_rfstatus()
+        except (IthoWiFiConnectionError, IthoWiFiApiError) as err:
+            raise UpdateFailed(f"RF status error: {err}") from err
+        return {src["id"]: src for src in rfstatus.get("sources", []) if src.get("id")}

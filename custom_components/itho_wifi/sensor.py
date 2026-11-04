@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 import logging
 import re
@@ -39,13 +40,16 @@ from .const import (
     CONF_DIAGNOSTICS,
     CONF_REMOTE_SENSORS,
     CONF_SENSORS,
+    DIAGNOSTIC_KEYS,
     DOMAIN,
     MANUFACTURER,
 )
 from .coordinator import (
     IthoDeviceInfoCoordinator,
     IthoRemotesCoordinator,
+    IthoRFStatusCoordinator,
     IthoStatusCoordinator,
+    joined_rf_source_ids,
 )
 from .entity import IthoEntity
 
@@ -594,6 +598,31 @@ async def async_setup_entry(
 
         entry.async_on_unload(remotes_coord.async_add_listener(_add_new_remote_sensors))
 
+    # Sensors of a device joined through an RF SEND remote: its own device, added
+    # as soon as the join and the values are there. Polling starts with the join.
+    rf_coord: IthoRFStatusCoordinator | None = data.get("rfstatus_coordinator")
+    if remotes_coord is not None and rf_coord is not None:
+        known_rf_sensors: set[str] = set()
+        polling = False
+
+        def _new_rf_source_sensors() -> list[SensorEntity]:
+            nonlocal polling
+            joined = joined_rf_source_ids(remotes_coord.data)
+            if joined and not polling:
+                polling = True
+                entry.async_on_unload(rf_coord.async_add_listener(_add_rf_source_sensors))
+            return _build_rf_source_sensors(rf_coord, device_coord, status_coord, joined, known_rf_sensors)
+
+        @callback
+        def _add_rf_source_sensors() -> None:
+            new = _new_rf_source_sensors()
+            if new:
+                async_add_entities(new)
+
+        entry.async_on_unload(remotes_coord.async_add_listener(_add_rf_source_sensors))
+        # After the main entities: these refer to the main device, which those create
+        entities.extend(_new_rf_source_sensors())
+
     async_add_entities(entities)
 
 
@@ -993,3 +1022,84 @@ class IthoRemoteSensor(CoordinatorEntity[IthoRemotesCoordinator], SensorEntity):
         if not isinstance(caps, dict):
             return None
         return self._value_from_caps(caps)
+
+
+def _build_rf_source_sensors(
+    rf_coord: IthoRFStatusCoordinator,
+    device_coord: IthoDeviceInfoCoordinator,
+    status_coord: IthoStatusCoordinator,
+    joined: set[str],
+    known: set[str],
+) -> list[SensorEntity]:
+    """Create sensors for the values of joined RF devices not seen before.
+
+    Values the device does not report ("not available") get no entity. The
+    source a standalone setup already uses as its main device is skipped.
+    """
+    out: list[SensorEntity] = []
+    main_source = status_coord.rf_source_name if status_coord.rf_standalone else None
+    for source_id in joined:
+        source = (rf_coord.data or {}).get(source_id)
+        if not source or (main_source and source.get("name") == main_source):
+            continue
+        for key, value in (source.get("data") or {}).items():
+            uid = f"{source_id}:{key}"
+            if value == "not available" or uid in known:
+                continue
+            known.add(uid)
+            description = KNOWN_SENSORS.get(key) or _description_from_key(key, value)
+            if key in DIAGNOSTIC_KEYS:
+                description = replace(description, entity_category=EntityCategory.DIAGNOSTIC)
+            out.append(IthoRFSourceSensor(rf_coord, device_coord, source_id, description))
+    return out
+
+
+class IthoRFSourceSensor(CoordinatorEntity[IthoRFStatusCoordinator], SensorEntity):
+    """A value received over RF from a device joined through an RF SEND remote."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: IthoRFStatusCoordinator,
+        device_info_coordinator: IthoDeviceInfoCoordinator,
+        source_id: str,
+        description: SensorEntityDescription,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._device_info_coordinator = device_info_coordinator
+        self._source_id = source_id
+        hwid = (device_info_coordinator.data or {}).get("add-on_hwid", "itho")
+        self._device_uid = f"{hwid}_rfsource_{source_id.replace(':', '')}"
+        self._attr_unique_id = f"{self._device_uid}_{description.key}"
+
+    def _value(self) -> Any:
+        """Return the current value, None when there is none."""
+        source = (self.coordinator.data or {}).get(self._source_id) or {}
+        value = (source.get("data") or {}).get(self.entity_description.key)
+        return None if value == "not available" else value
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Expose the joined RF device as its own device under the add-on."""
+        info = self._device_info_coordinator.data or {}
+        source = (self.coordinator.data or {}).get(self._source_id) or {}
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_uid)},
+            name=source.get("name") or f"Itho {self._source_id}",
+            manufacturer=MANUFACTURER,
+            model=f"RF device {self._source_id}",
+            via_device=(DOMAIN, info.get("add-on_hwid", "unknown")),
+        )
+
+    @property
+    def available(self) -> bool:
+        """Available while the device reports this value."""
+        return super().available and self._value() is not None
+
+    @property
+    def native_value(self) -> Any:
+        """Return the value."""
+        return self._value()
