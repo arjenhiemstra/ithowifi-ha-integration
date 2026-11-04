@@ -30,7 +30,7 @@ try:
     _MWH = UnitOfEnergy.MEGA_WATT_HOUR  # type: ignore[attr-defined]
 except AttributeError:
     _MWH = "MWh"
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -575,9 +575,24 @@ async def async_setup_entry(
     selected_remote_sensors = set(entry.options.get(CONF_REMOTE_SENSORS, []))
     remotes_coord: IthoRemotesCoordinator | None = data.get("remotes_coordinator")
     if remotes_coord is not None and selected_remote_sensors:
+        known_remote_sensors: set[str] = set()
         entities.extend(
-            _build_remote_sensors(remotes_coord, device_coord, selected_remote_sensors)
+            _build_remote_sensors(
+                remotes_coord, device_coord, selected_remote_sensors, known_remote_sensors
+            )
         )
+
+        # The add-on only reports a value once it has received it over RF
+        # (e.g. after a reboot), so add entities as their values show up.
+        @callback
+        def _add_new_remote_sensors() -> None:
+            new = _build_remote_sensors(
+                remotes_coord, device_coord, selected_remote_sensors, known_remote_sensors
+            )
+            if new:
+                async_add_entities(new)
+
+        entry.async_on_unload(remotes_coord.async_add_listener(_add_new_remote_sensors))
 
     async_add_entities(entities)
 
@@ -790,6 +805,14 @@ _REMOTE_CAP_SENSORS: dict[str, dict[str, Any]] = {
     },
 }
 
+# Values each RF remote type can report, so their entities exist before the
+# first value arrives. Mirrors the firmware (HADiscConfig::getAvailableSensorsForType).
+_REMOTE_TYPE_CAPS: dict[int, tuple[str, ...]] = {
+    0x1298: ("temp", "co2"),  # RFT CO2
+    0x12A0: ("temp", "hum", "dewpoint", "battery"),  # RFT RV
+    0x2E10: ("pir",),  # RFT PIR
+}
+
 # Special (non-measurement) per-remote sensors.
 _REMOTE_LASTCMD_META: dict[str, Any] = {
     "name": "Last command", "unit": None, "device_class": None,
@@ -813,16 +836,25 @@ def _build_remote_sensors(
     remotes_coord: IthoRemotesCoordinator,
     device_coord: IthoDeviceInfoCoordinator,
     selected: set[str],
+    known: set[str],
 ) -> list[SensorEntity]:
     """Create per-remote sensor entities for the selected remotes.
 
     `selected` holds "rf:<index>" / "vr:<index>" entries chosen in the
-    setup/options flow. Only capabilities present in the current coordinator
-    data get an entity (a rescan/reload surfaces newly-appearing ones). Empty
-    slots and remotes without a `capabilities` object are skipped.
+    setup/options flow. An RF remote gets the entities its type can report
+    (unavailable until the add-on receives a value) plus any other capability
+    present in the coordinator data; `known` tracks the ones already created
+    so repeated calls only return newly-appearing ones. Empty slots are skipped.
     """
     out: list[SensorEntity] = []
     data = remotes_coord.data or {}
+
+    def add(kind: str, index: int, cap_key: str, meta: dict[str, Any]) -> None:
+        key = f"{kind}:{index}:{cap_key}"
+        if key not in known:
+            known.add(key)
+            out.append(IthoRemoteSensor(remotes_coord, device_coord, kind, index, cap_key, meta))
+
     for kind in ("rf", "vr"):
         for remote in data.get(kind, []):
             if _remote_is_empty(remote):
@@ -832,20 +864,15 @@ def _build_remote_sensors(
                 continue
             caps = remote.get("capabilities")
             if not isinstance(caps, dict):
-                continue
+                caps = {}
+            type_caps = _REMOTE_TYPE_CAPS.get(remote.get("remtype"), ()) if kind == "rf" else ()
             for cap_key, meta in _REMOTE_CAP_SENSORS.items():
-                if caps.get(cap_key) is not None:
-                    out.append(
-                        IthoRemoteSensor(remotes_coord, device_coord, kind, index, cap_key, meta)
-                    )
+                if cap_key in type_caps or caps.get(cap_key) is not None:
+                    add(kind, index, cap_key, meta)
             if caps.get("lastcmdmsg") is not None or caps.get("lastcmd") is not None:
-                out.append(
-                    IthoRemoteSensor(remotes_coord, device_coord, kind, index, "lastcmdmsg", _REMOTE_LASTCMD_META)
-                )
+                add(kind, index, "lastcmdmsg", _REMOTE_LASTCMD_META)
             if caps.get("timestamp") is not None:
-                out.append(
-                    IthoRemoteSensor(remotes_coord, device_coord, kind, index, "timestamp", _REMOTE_TIME_META)
-                )
+                add(kind, index, "timestamp", _REMOTE_TIME_META)
     return out
 
 
