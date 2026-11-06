@@ -54,7 +54,10 @@ This integration works with all Itho Daalderop ventilation units supported by th
 - CVE ECO 2
 - CVE ECO RFT
 - CVE-S ECO / PAK / Optima / CO2
-- HRU 150 / 200 / 250 / 300 / 350 / 400
+- HRU ECO 150 / 200 / 250 / 300 / 350
+- HRU ECO LE / HE / LP / HP BAL
+- HRU 3 (3) and HRU 3 (2)
+- HRU 300V / 375V / 400 R
 - DemandFlow / QualityFlow
 - WPU 4G / 5G
 
