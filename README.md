@@ -10,7 +10,7 @@ Home Assistant integration for the [IthoWiFi add-on](https://github.com/arjenhie
 - **Itho Spider thermostats** as climate entities (room temperature, setpoint, heating on/off). Discover the Spider on the add-on's RF devices page first (firmware 3.3.0 or newer); Home Assistant then offers it under **Settings** > **Repairs**, or select it in the options flow
 - **Diagnostic sensors** for error codes, operation hours, startup counter, and more
 - **Timer buttons** for timer1, timer2, timer3 (cook30/cook60 for DemandFlow/QualityFlow devices)
-- **Fan demand slider** for direct speed control
+- **Fan demand slider** for direct speed control (not on a DemandFlow: its remote has no demand, medium or auto, so those controls are left out)
 - **Reboot button**
 - **Sensor selection** during setup — choose which sensors and diagnostics to include
 - **Options flow** to change sensor selection after setup
