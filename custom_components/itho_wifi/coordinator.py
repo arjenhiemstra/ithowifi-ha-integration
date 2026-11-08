@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 import logging
-from typing import Any
+from typing import Any, TypeVar
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import (
@@ -24,8 +24,38 @@ _LOGGER = logging.getLogger(__name__)
 
 REMFUNC_SEND = 5
 
+# Failed polls in a row before entities go unavailable; until then the last data stays.
+MAX_FAILED_POLLS = 3
 
-class IthoStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+_DataT = TypeVar("_DataT")
+
+
+class IthoCoordinator(DataUpdateCoordinator[_DataT]):
+    """Coordinator that keeps its last data when a poll fails on a weak connection."""
+
+    _failed_polls = 0
+
+    async def _async_fetch(self) -> _DataT:
+        raise NotImplementedError
+
+    async def _async_update_data(self) -> _DataT:
+        try:
+            data = await self._async_fetch()
+        except UpdateFailed as err:
+            self._failed_polls += 1
+            if (
+                isinstance(err.__cause__, IthoWiFiConnectionError)
+                and self.data is not None
+                and self._failed_polls < MAX_FAILED_POLLS
+            ):
+                _LOGGER.debug("%s: %s, keeping last data", self.name, err)
+                return self.data
+            raise
+        self._failed_polls = 0
+        return data
+
+
+class IthoStatusCoordinator(IthoCoordinator[dict[str, Any]]):
     """Coordinator for frequent status updates (speed, sensors)."""
 
     def __init__(
@@ -48,7 +78,7 @@ class IthoStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.use_rf_commands = False  # set by __init__.py
         self.ota_in_progress = False
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    async def _async_fetch(self) -> dict[str, Any]:
         """Fetch status data from the device."""
         if self.ota_in_progress:
             return self.data or {}
@@ -74,7 +104,7 @@ class IthoStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(f"API error: {err}") from err
 
 
-class IthoDeviceInfoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class IthoDeviceInfoCoordinator(IthoCoordinator[dict[str, Any]]):
     """Coordinator for infrequent device info updates."""
 
     def __init__(self, hass: HomeAssistant, api: IthoWiFiApi) -> None:
@@ -88,7 +118,7 @@ class IthoDeviceInfoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api = api
         self.ota_in_progress = False
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    async def _async_fetch(self) -> dict[str, Any]:
         """Fetch device info from the device."""
         if self.ota_in_progress:
             return self.data or {}
@@ -100,7 +130,7 @@ class IthoDeviceInfoCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(f"API error: {err}") from err
 
 
-class IthoRemotesCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class IthoRemotesCoordinator(IthoCoordinator[dict[str, Any]]):
     """Coordinator for per-remote state (RF + virtual) used by per-remote fans.
 
     Polls /api/v2/remotes and /api/v2/vremotes and stores the result as
@@ -129,7 +159,7 @@ class IthoRemotesCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # to avoid heap-exhaustion crashes on the device during download.
     ota_in_progress: bool = False
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    async def _async_fetch(self) -> dict[str, Any]:
         """Fetch both remote lists from the device."""
         if self.ota_in_progress:
             return self.data or {"rf": [], "vr": []}
@@ -176,7 +206,7 @@ def joined_rf_source_ids(remotes_data: dict[str, Any] | None) -> set[str]:
     return ids
 
 
-class IthoRFStatusCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
+class IthoRFStatusCoordinator(IthoCoordinator[dict[str, dict[str, Any]]]):
     """Polls /api/v2/rfstatus for devices joined through an RF SEND remote.
 
     Data is keyed by source id. A coordinator only polls while it has
@@ -194,7 +224,7 @@ class IthoRFStatusCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.api = api
         self.ota_in_progress = False
 
-    async def _async_update_data(self) -> dict[str, dict[str, Any]]:
+    async def _async_fetch(self) -> dict[str, dict[str, Any]]:
         """Fetch the tracked RF status sources."""
         if self.ota_in_progress:
             return self.data or {}

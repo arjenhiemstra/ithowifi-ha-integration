@@ -59,7 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         or device_coordinator.data.get("itho_control_interface", 0) == 1
     )
 
-    _LOGGER.warning(
+    _LOGGER.debug(
         "IthoWiFi setup: use_rf_commands=%s rf_standalone=%s "
         "itho_devtype=%r itho_rf_standalone=%r itho_control_interface=%r "
         "deviceinfo=%r",
