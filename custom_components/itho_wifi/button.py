@@ -6,6 +6,7 @@ from homeassistant.components.button import ButtonEntity, ButtonEntityDescriptio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -15,6 +16,7 @@ from .const import (
     DOMAIN,
     MANUFACTURER,
     TIMER_PRESETS,
+    is_demandflow_device,
     is_fan_device,
 )
 from .coordinator import (
@@ -43,7 +45,8 @@ async def async_setup_entry(
     # Heatpump / AutoTemp have no fan presets at all.
     #
     # Speed + mode presets (low / medium / high / auto / autonight) are
-    # always present for every fan-capable device. The firmware
+    # present for every fan-capable device except DemandFlow (low / high
+    # only, see below). The firmware
     # (ithoExecCommand) handles the routing — vremote 0 dispatch when
     # itho_vremoteapi=1, PWM2I2C speed otherwise. For device types where
     # auto / autonight don't map to a distinct state, the firmware silently
@@ -60,6 +63,16 @@ async def async_setup_entry(
             "auto": ("Auto", "mdi:fan-auto"),
             "autonight": ("Auto night", "mdi:weather-night"),
         }
+        if is_demandflow_device(device_type):
+            # A DemandFlow is driven through a DF/QF remote, which has no medium,
+            # auto or autonight. Drop the buttons an older version created.
+            hwid = (device_coord.data or {}).get("add-on_hwid", "itho")
+            registry = er.async_get(hass)
+            for cmd in ("medium", "auto", "autonight"):
+                del preset_buttons[cmd]
+                entity_id = registry.async_get_entity_id("button", DOMAIN, f"{hwid}_{cmd}")
+                if entity_id:
+                    registry.async_remove(entity_id)
         for cmd, label in TIMER_PRESETS.items():
             preset_buttons[cmd] = (label, "mdi:timer-outline")
         if any(dt in device_type for dt in COOK_DEVICE_TYPES):

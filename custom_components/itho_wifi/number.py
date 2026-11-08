@@ -9,9 +9,10 @@ from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, is_fan_device
+from .const import DOMAIN, is_demandflow_device, is_fan_device
 from .coordinator import IthoDeviceInfoCoordinator, IthoStatusCoordinator
 from .entity import IthoEntity
 
@@ -29,8 +30,14 @@ async def async_setup_entry(
     device_coord: IthoDeviceInfoCoordinator = data["device_coordinator"]
 
     devtype = (device_coord.data or {}).get("itho_devtype")
-    if not is_fan_device(devtype):
-        # Heatpump / AutoTemp / DemandFlow devices have no fan demand.
+    if not is_fan_device(devtype) or is_demandflow_device(devtype):
+        # Heatpump / AutoTemp / DemandFlow devices have no fan demand. Drop the
+        # entity an older version created on a DemandFlow.
+        hwid = (device_coord.data or {}).get("add-on_hwid", "itho")
+        registry = er.async_get(hass)
+        entity_id = registry.async_get_entity_id("number", DOMAIN, f"{hwid}_fan_demand")
+        if entity_id:
+            registry.async_remove(entity_id)
         return
 
     entities: list[NumberEntity] = [
