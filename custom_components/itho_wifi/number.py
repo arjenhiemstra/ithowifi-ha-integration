@@ -75,16 +75,16 @@ class IthoFanDemandNumber(IthoEntity, NumberEntity):
         """Return the current fan speed as percentage."""
         if self.coordinator.data is None:
             return None
-        # Prefer Speed status from ithostatus (works when PWM2I2C is off)
+        # currentspeed wins when the add-on drives the speed (see fan.percentage)
+        speed = self.coordinator.data.get("speed", {}).get("currentspeed")
+        if speed:
+            return min(round(speed / 2.55), 100)
+        # Speed status from ithostatus (works when PWM2I2C is off)
         status = self.coordinator.data.get("status", {})
         val = status.get("Speed status")
         if val is not None and val != "not available":
             return min(round(float(val)), 100)
-        # Fall back to currentspeed
-        speed = self.coordinator.data.get("speed", {}).get("currentspeed")
-        if speed is None:
-            return None
-        return min(round(speed / 2.55), 100)
+        return None if speed is None else 0
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the fan demand. Tries RF demand first, falls back to speed."""
