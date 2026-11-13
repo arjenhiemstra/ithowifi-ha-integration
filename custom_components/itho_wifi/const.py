@@ -68,6 +68,8 @@ def is_fan_device(itho_devtype: str | None) -> bool:
 CONF_SENSORS = "sensors"
 CONF_DIAGNOSTICS = "diagnostics"
 CONF_RF_SOURCE = "rf_source"
+# RF id ("AA:BB:CC") of the chosen source; names need not be unique
+CONF_RF_SOURCE_ID = "rf_source_id"
 # List of per-remote fan selections, each entry "vr:<index>" or "rf:<index>"
 CONF_REMOTE_FANS = "remote_fans"
 # List of per-remote sensor selections (remotes whose received data — CO2,

@@ -64,6 +64,7 @@ class IthoStatusCoordinator(IthoCoordinator[dict[str, Any]]):
         api: IthoWiFiApi,
         rf_standalone: bool = False,
         rf_source_name: str | None = None,
+        rf_source_id: str | None = None,
     ) -> None:
         """Initialize the status coordinator."""
         super().__init__(
@@ -75,6 +76,7 @@ class IthoStatusCoordinator(IthoCoordinator[dict[str, Any]]):
         self.api = api
         self.rf_standalone = rf_standalone
         self.rf_source_name = rf_source_name
+        self.rf_source_id = rf_source_id
         self.use_rf_commands = False  # set by __init__.py
         self.ota_in_progress = False
 
@@ -86,9 +88,10 @@ class IthoStatusCoordinator(IthoCoordinator[dict[str, Any]]):
             speed_data = await self.api.get_speed()
             lastcmd_data = await self.api.get_lastcmd()
 
-            if self.rf_standalone and self.rf_source_name:
+            if self.rf_standalone and (self.rf_source_id or self.rf_source_name):
+                # Entries from before rf_source_id only have the name
                 status_data = await self.api.get_rfstatus(
-                    name=self.rf_source_name
+                    name=self.rf_source_name, source_id=self.rf_source_id
                 )
             else:
                 status_data = await self.api.get_status()

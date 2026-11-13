@@ -23,6 +23,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .api import IthoWiFiApi, IthoWiFiApiError, IthoWiFiConnectionError, IthoWiFiNotFoundError
 from .const import (
@@ -34,6 +35,7 @@ from .const import (
     is_spider_thermostat,
     remote_rf_uid,
     CONF_RF_SOURCE,
+    CONF_RF_SOURCE_ID,
     CONF_SENSORS,
     DIAGNOSTIC_KEYS,
     DOMAIN,
@@ -129,6 +131,67 @@ def _build_thermostat_options(rf_list: list[dict[str, Any]]) -> list[SelectOptio
     ]
 
 
+def _rf_source_id(src: dict[str, Any]) -> str:
+    """Return the RF id ("AA:BB:CC") of a tracked rfstatus source."""
+    return str(src.get("id", "")).upper()
+
+
+def _sorted_rf_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Sources with an id, the ones that have been heard first."""
+    return sorted(
+        (s for s in sources if _rf_source_id(s)),
+        key=lambda s: not s.get("lastSeen"),
+    )
+
+
+def _rf_source_options(sources: list[dict[str, Any]]) -> list[SelectOptionDict]:
+    """Selector options keyed by RF id, so equally named sources stay apart."""
+    options: list[SelectOptionDict] = []
+    for src in sources:
+        label = f"{src.get('name') or '(unnamed)'} ({_rf_source_id(src)})"
+        if not src.get("lastSeen"):
+            label += ", no data yet"
+        options.append(SelectOptionDict(value=_rf_source_id(src), label=label))
+    return options
+
+
+def _rf_source_keys(
+    sources: list[dict[str, Any]], source_id: str
+) -> tuple[list[str], list[str]]:
+    """Sensor and diagnostic keys of the chosen source.
+
+    Falls back to the keys of all sources while the chosen one has not
+    reported yet, so sensors can still be picked.
+    """
+    chosen = [
+        s for s in sources if _rf_source_id(s) == source_id and s.get("data")
+    ]
+    sensors: list[str] = []
+    diagnostics: list[str] = []
+    for src in chosen or sources:
+        for key, value in (src.get("data") or {}).items():
+            if value == "not available":
+                continue
+            target = diagnostics if key in DIAGNOSTIC_KEYS else sensors
+            if key not in target:
+                target.append(key)
+    return sensors, diagnostics
+
+
+def _current_rf_source_id(
+    options: dict[str, Any], sources: list[dict[str, Any]]
+) -> str:
+    """Saved source id; entries from before rf_source_id are matched by name."""
+    ids = [_rf_source_id(s) for s in sources]
+    if (saved := options.get(CONF_RF_SOURCE_ID)) in ids:
+        return saved
+    name = options.get(CONF_RF_SOURCE)
+    for src in sources:
+        if name and src.get("name") == name:
+            return _rf_source_id(src)
+    return ids[0] if ids else ""
+
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
@@ -146,13 +209,14 @@ class IthoWiFiConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._host: str = ""
+        self._discovered_name: str = ""
         self._username: str | None = None
         self._password: str | None = None
         self._deviceinfo: dict[str, Any] = {}
         self._available_sensors: list[str] = []
         self._available_diagnostics: list[str] = []
         self._rf_standalone: bool = False
-        self._rf_sources: list[str] = []
+        self._rf_sources: list[dict[str, Any]] = []
         # Accumulated across steps so the final create_entry sees
         # everything the user picked in earlier screens.
         self._pending_sensors: list[str] = []
@@ -175,67 +239,8 @@ class IthoWiFiConfigFlow(ConfigFlow, domain=DOMAIN):
             self._host = user_input[CONF_HOST].strip()
             self._username = user_input.get(CONF_USERNAME)
             self._password = user_input.get(CONF_PASSWORD)
-
-            try:
-                session = async_get_clientsession(self.hass)
-                api = IthoWiFiApi(
-                    self._host, session, self._username, self._password
-                )
-                self._deviceinfo = await api.get_deviceinfo()
-                status = await api.get_status()
-            except IthoWiFiConnectionError:
-                errors["base"] = "cannot_connect"
-            except IthoWiFiApiError:
-                errors["base"] = "invalid_auth"
-            except Exception:
-                _LOGGER.exception("Unexpected error during config flow")
-                errors["base"] = "unknown"
-
-            if not errors:
-                device_id = self._deviceinfo.get("add-on_hwid", self._host)
-                await self.async_set_unique_id(device_id)
-                self._abort_if_unique_id_configured()
-
-                self._rf_standalone = (
-                    self._deviceinfo.get("itho_rf_standalone", 0) == 1
-                    or self._deviceinfo.get("itho_devtype") in ("Unknown", "Unkown device type", "Generic Itho device")
-                )
-
-                # In standalone/unknown mode, get sensor keys from RF status
-                if self._rf_standalone:
-                    try:
-                        rfdata = await api.get_rfstatus()
-                        sources = rfdata.get("sources", [])
-                        for src in sources:
-                            name = src.get("name", "")
-                            if name:
-                                self._rf_sources.append(name)
-                            # Use first source's data for sensor keys
-                            if not self._available_sensors:
-                                for key, value in src.get("data", {}).items():
-                                    if value == "not available":
-                                        continue
-                                    if key in DIAGNOSTIC_KEYS:
-                                        self._available_diagnostics.append(key)
-                                    else:
-                                        self._available_sensors.append(key)
-                    except Exception as ex:
-                        _LOGGER.warning("RF status fetch failed: %s", ex)
-
-                    if self._rf_sources:
-                        return await self.async_step_rf_source()
-                    return await self.async_step_sensors()
-                else:
-                    # Normal I2C mode
-                    for key, value in status.items():
-                        if key == "timestamp" or value == "not available":
-                            continue
-                        if key in DIAGNOSTIC_KEYS:
-                            self._available_diagnostics.append(key)
-                        else:
-                            self._available_sensors.append(key)
-
-                    return await self.async_step_sensors()
+            if (result := await self._async_connect(errors)) is not None:
+                return result
 
         return self.async_show_form(
             step_id="user",
@@ -243,19 +248,146 @@ class IthoWiFiConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_zeroconf(
+        self, discovery_info: ZeroconfServiceInfo
+    ) -> ConfigFlowResult:
+        """Handle an add-on found via mDNS.
+
+        Firmware with TXT records advertises its hwid, which is the entry's
+        unique_id; older firmware is matched on the default hostname and the
+        hwid is fetched from /api/v2/deviceinfo when no auth is required.
+        """
+        if discovery_info.ip_address.version != 4:
+            return self.async_abort(reason="not_ipv4_address")
+
+        host = str(discovery_info.ip_address)
+        hwid = discovery_info.properties.get("hwid")
+        if not hwid:
+            self._async_abort_entries_match({CONF_HOST: host})
+            api = IthoWiFiApi(host, async_get_clientsession(self.hass))
+            try:
+                hwid = (await api.get_deviceinfo()).get("add-on_hwid")
+            except IthoWiFiConnectionError:
+                return self.async_abort(reason="cannot_connect")
+            except IthoWiFiNotFoundError:
+                return self.async_abort(reason="not_supported")
+            except IthoWiFiApiError:
+                hwid = None  # API security on; unique_id is set after login
+
+        if hwid:
+            await self.async_set_unique_id(hwid)
+            self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+
+        self._host = host
+        self._discovered_name = discovery_info.name.split(".")[0].removesuffix(
+            " Web Interface"
+        )
+        self.context["title_placeholders"] = {"name": self._discovered_name}
+        return await self.async_step_zeroconf_confirm()
+
+    async def async_step_zeroconf_confirm(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Confirm a discovered add-on; credentials only if API security is on."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            self._username = user_input.get(CONF_USERNAME)
+            self._password = user_input.get(CONF_PASSWORD)
+            if (result := await self._async_connect(errors)) is not None:
+                return result
+
+        return self.async_show_form(
+            step_id="zeroconf_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_USERNAME): str,
+                    vol.Optional(CONF_PASSWORD): str,
+                }
+            ),
+            description_placeholders={
+                "name": self._discovered_name,
+                "host": self._host,
+            },
+            errors=errors,
+        )
+
+    async def _async_connect(
+        self, errors: dict[str, str]
+    ) -> ConfigFlowResult | None:
+        """Connect to self._host and continue the flow; fills errors on failure."""
+        try:
+            session = async_get_clientsession(self.hass)
+            api = IthoWiFiApi(
+                self._host, session, self._username, self._password
+            )
+            self._deviceinfo = await api.get_deviceinfo()
+            status = await api.get_status()
+        except IthoWiFiConnectionError:
+            errors["base"] = "cannot_connect"
+            return None
+        except IthoWiFiApiError:
+            errors["base"] = "invalid_auth"
+            return None
+        except Exception:
+            _LOGGER.exception("Unexpected error during config flow")
+            errors["base"] = "unknown"
+            return None
+
+        device_id = self._deviceinfo.get("add-on_hwid", self._host)
+        await self.async_set_unique_id(device_id)
+        self._abort_if_unique_id_configured()
+
+        self._rf_standalone = (
+            self._deviceinfo.get("itho_rf_standalone", 0) == 1
+            or self._deviceinfo.get("itho_devtype") in ("Unknown", "Unkown device type", "Generic Itho device")
+        )
+
+        # In standalone/unknown mode the sensor keys come from the RF source
+        # picked in the next step
+        if self._rf_standalone:
+            try:
+                rfdata = await api.get_rfstatus()
+                self._rf_sources = _sorted_rf_sources(rfdata.get("sources", []))
+            except Exception as ex:
+                _LOGGER.warning("RF status fetch failed: %s", ex)
+
+            if self._rf_sources:
+                return await self.async_step_rf_source()
+            return await self.async_step_sensors()
+
+        # Normal I2C mode
+        for key, value in status.items():
+            if key == "timestamp" or value == "not available":
+                continue
+            if key in DIAGNOSTIC_KEYS:
+                self._available_diagnostics.append(key)
+            else:
+                self._available_sensors.append(key)
+
+        return await self.async_step_sensors()
+
     async def async_step_rf_source(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Handle RF source selection for standalone mode."""
         if user_input is not None:
-            self._selected_rf_source = user_input.get(CONF_RF_SOURCE, "")
+            self._selected_rf_source_id = user_input.get(CONF_RF_SOURCE, "")
+            self._selected_rf_source = next(
+                (
+                    s.get("name", "")
+                    for s in self._rf_sources
+                    if _rf_source_id(s) == self._selected_rf_source_id
+                ),
+                "",
+            )
+            (
+                self._available_sensors,
+                self._available_diagnostics,
+            ) = _rf_source_keys(self._rf_sources, self._selected_rf_source_id)
             return await self.async_step_sensors()
-
-        source_opts = [
-            SelectOptionDict(value=name, label=name)
-            for name in self._rf_sources
-        ]
 
         return self.async_show_form(
             step_id="rf_source",
@@ -263,10 +395,10 @@ class IthoWiFiConfigFlow(ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(
                         CONF_RF_SOURCE,
-                        default=self._rf_sources[0] if self._rf_sources else "",
+                        default=_rf_source_id(self._rf_sources[0]),
                     ): SelectSelector(
                         SelectSelectorConfig(
-                            options=source_opts,
+                            options=_rf_source_options(self._rf_sources),
                             mode=SelectSelectorMode.LIST,
                         )
                     ),
@@ -529,6 +661,7 @@ class IthoWiFiConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_SENSORS: self._pending_sensors,
                 CONF_DIAGNOSTICS: self._pending_diagnostics,
                 CONF_RF_SOURCE: getattr(self, "_selected_rf_source", ""),
+                CONF_RF_SOURCE_ID: getattr(self, "_selected_rf_source_id", ""),
                 CONF_REMOTE_FANS: remote_fans,
                 CONF_REMOTE_SENSORS: remote_sensors or [],
                 CONF_THERMOSTATS: thermostats or [],
@@ -548,6 +681,7 @@ class IthoWiFiOptionsFlow(OptionsFlow):
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize the options flow."""
         self._config_entry = config_entry
+        self._rf_sources: list[dict[str, Any]] = []
 
     async def async_step_init(
         self,
@@ -555,6 +689,20 @@ class IthoWiFiOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Handle options flow."""
         if user_input is not None:
+            # The RF source selector is keyed by id; keep the name alongside
+            if (source_id := user_input.get(CONF_RF_SOURCE)) is not None:
+                user_input = {
+                    **user_input,
+                    CONF_RF_SOURCE_ID: source_id,
+                    CONF_RF_SOURCE: next(
+                        (
+                            s.get("name", "")
+                            for s in self._rf_sources
+                            if _rf_source_id(s) == source_id
+                        ),
+                        "",
+                    ),
+                }
             # Keep the thermostat selection when that field was not shown
             # (no Spiders listed, or the add-on was briefly unreachable).
             if CONF_THERMOSTATS not in user_input and CONF_THERMOSTATS in self._config_entry.options:
@@ -569,7 +717,6 @@ class IthoWiFiOptionsFlow(OptionsFlow):
         available_sensors: list[str] = []
         available_diagnostics: list[str] = []
 
-        rf_sources: list[str] = []
         remote_fan_opts: list[SelectOptionDict] = []
         remote_sensor_opts: list[SelectOptionDict] = []
         thermostat_opts: list[SelectOptionDict] = []
@@ -607,18 +754,11 @@ class IthoWiFiOptionsFlow(OptionsFlow):
 
             if rf_standalone:
                 rfdata = await api.get_rfstatus()
-                for src in rfdata.get("sources", []):
-                    name = src.get("name", "")
-                    if name:
-                        rf_sources.append(name)
-                    if not available_sensors:
-                        for key, value in src.get("data", {}).items():
-                            if value == "not available":
-                                continue
-                            if key in DIAGNOSTIC_KEYS:
-                                available_diagnostics.append(key)
-                            else:
-                                available_sensors.append(key)
+                self._rf_sources = _sorted_rf_sources(rfdata.get("sources", []))
+                available_sensors, available_diagnostics = _rf_source_keys(
+                    self._rf_sources,
+                    _current_rf_source_id(self._config_entry.options, self._rf_sources),
+                )
             else:
                 status = await api.get_status()
                 for key, value in status.items():
@@ -677,20 +817,17 @@ class IthoWiFiOptionsFlow(OptionsFlow):
                 )
             )
 
-        if rf_sources:
-            current_rf_source = self._config_entry.options.get(CONF_RF_SOURCE, "")
-            source_opts = [
-                SelectOptionDict(value=name, label=name)
-                for name in rf_sources
-            ]
+        if self._rf_sources:
             schema_dict[
                 vol.Optional(
                     CONF_RF_SOURCE,
-                    default=current_rf_source if current_rf_source in rf_sources else (rf_sources[0] if rf_sources else ""),
+                    default=_current_rf_source_id(
+                        self._config_entry.options, self._rf_sources
+                    ),
                 )
             ] = SelectSelector(
                 SelectSelectorConfig(
-                    options=source_opts,
+                    options=_rf_source_options(self._rf_sources),
                     mode=SelectSelectorMode.LIST,
                 )
             )

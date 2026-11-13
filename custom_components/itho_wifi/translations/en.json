@@ -1,11 +1,20 @@
 {
   "config": {
+    "flow_title": "{name}",
     "step": {
       "user": {
         "title": "Connect to IthoWiFi add-on",
         "description": "Enter the IP address or hostname of your IthoWiFi add-on. Authentication is only needed if API security is enabled on the device.",
         "data": {
           "host": "Host",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Discovered IthoWiFi add-on",
+        "description": "Set up the IthoWiFi add-on **{name}** at {host}? Enter a username and password only if API security is enabled on the device.",
+        "data": {
           "username": "Username",
           "password": "Password"
         }
@@ -53,7 +62,10 @@
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "This device is already configured"
+      "already_configured": "This device is already configured",
+      "cannot_connect": "Unable to connect to the device",
+      "not_ipv4_address": "Only IPv4 addresses are supported",
+      "not_supported": "The firmware of this add-on is too old, please update it first"
     }
   },
   "options": {

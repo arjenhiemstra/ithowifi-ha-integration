@@ -13,7 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import IthoWiFiApi
 from .repairs import async_check_spider_issues
-from .const import CONF_RF_SOURCE, DOMAIN
+from .const import CONF_RF_SOURCE, CONF_RF_SOURCE_ID, DOMAIN
 from .coordinator import (
     IthoDeviceInfoCoordinator,
     IthoRemotesCoordinator,
@@ -52,6 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         or device_coordinator.data.get("itho_devtype") in ("Unknown", "Unkown device type", "Generic Itho device")
     )
     rf_source_name = entry.options.get(CONF_RF_SOURCE)
+    rf_source_id = entry.options.get(CONF_RF_SOURCE_ID)
 
     # Use RF commands when in standalone mode or RF CO2 control interface
     use_rf_commands = (
@@ -72,7 +73,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     status_coordinator = IthoStatusCoordinator(
-        hass, api, rf_standalone=rf_standalone, rf_source_name=rf_source_name
+        hass,
+        api,
+        rf_standalone=rf_standalone,
+        rf_source_name=rf_source_name,
+        rf_source_id=rf_source_id,
     )
     status_coordinator.use_rf_commands = use_rf_commands
     await status_coordinator.async_config_entry_first_refresh()

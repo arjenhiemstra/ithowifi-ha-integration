@@ -158,13 +158,30 @@ class IthoWiFiApi:
         data = await self._request("GET", API_VREMOTES)
         return data.get("vremotesinfo", [])
 
-    async def get_rfstatus(self, name: str | None = None) -> dict[str, Any]:
-        """Get RF status data from tracked sources."""
-        params = {"name": name} if name else None
+    async def get_rfstatus(
+        self, name: str | None = None, source_id: str | None = None
+    ) -> dict[str, Any]:
+        """Get RF status data from tracked sources, optionally one by id or name."""
+        if source_id:
+            params: dict[str, str] | None = {"id": source_id}
+        elif name:
+            params = {"name": name}
+        else:
+            params = None
         data = await self._request("GET", API_RFSTATUS, params=params)
         rfstatus = data.get("rfstatus", data)
+        # Firmware without the id filter ignores it and returns all sources
+        if source_id and "sources" in rfstatus:
+            rfstatus = next(
+                (
+                    s
+                    for s in rfstatus["sources"]
+                    if str(s.get("id", "")).upper() == source_id.upper()
+                ),
+                {},
+            )
         # Single source query returns flat dict, multi returns sources array
-        if name and "data" in rfstatus:
+        if (name or source_id) and "data" in rfstatus:
             return rfstatus.get("data", {})
         return rfstatus
 

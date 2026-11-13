@@ -1,11 +1,20 @@
 {
   "config": {
+    "flow_title": "{name}",
     "step": {
       "user": {
         "title": "Verbinden met IthoWiFi add-on",
         "description": "Voer het IP-adres of de hostnaam van je IthoWiFi add-on in. Authenticatie is alleen nodig als API-beveiliging is ingeschakeld op het apparaat.",
         "data": {
           "host": "Host",
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord"
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "IthoWiFi add-on gevonden",
+        "description": "De IthoWiFi add-on **{name}** op {host} instellen? Vul alleen een gebruikersnaam en wachtwoord in als API-beveiliging is ingeschakeld op het apparaat.",
+        "data": {
           "username": "Gebruikersnaam",
           "password": "Wachtwoord"
         }
@@ -46,7 +55,10 @@
       "unknown": "Onverwachte fout"
     },
     "abort": {
-      "already_configured": "Dit apparaat is al geconfigureerd"
+      "already_configured": "Dit apparaat is al geconfigureerd",
+      "cannot_connect": "Kan geen verbinding maken met het apparaat",
+      "not_ipv4_address": "Alleen IPv4-adressen worden ondersteund",
+      "not_supported": "De firmware van deze add-on is te oud, werk deze eerst bij"
     }
   },
   "options": {

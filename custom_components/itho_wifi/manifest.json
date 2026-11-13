@@ -8,5 +8,17 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/arjenhiemstra/ithowifi-ha-integration/issues",
   "requirements": [],
+  "zeroconf": [
+    {
+      "type": "_http._tcp.local.",
+      "properties": {
+        "vendor": "nrgwatch"
+      }
+    },
+    {
+      "type": "_http._tcp.local.",
+      "name": "nrg-itho*"
+    }
+  ],
   "version": "0.8.1"
 }
