@@ -4,6 +4,7 @@ Home Assistant integration for the [IthoWiFi add-on](https://github.com/arjenhie
 
 ## Features
 
+- **Automatic discovery** of add-ons on your network (mDNS); a known add-on that gets a new IP address is updated automatically
 - **Fan entity** with speed control and preset modes (low, medium, high, auto, autonight, away)
 - **Sensors** dynamically created based on your device type (temperature, humidity, fan speed, CO2, bypass position, etc.)
 - **Per-remote sensors** (opt-in, selectable in setup/options like the per-remote fans) for RF/virtual remotes that report data — a _receive_ remote (e.g. an RFT CO2) appears as its own sub-device with CO2, temperature, humidity, battery, last command and last-command-time sensors
@@ -37,6 +38,10 @@ Home Assistant integration for the [IthoWiFi add-on](https://github.com/arjenhie
 2. Restart Home Assistant
 
 ## Configuration
+
+Home Assistant finds add-ons on your network by itself: they show up under **Discovered** on **Settings** > **Devices & Services**. Click **Add** and continue with step 4 below. Add-ons with the default `nrg-itho-*` host name are found with any firmware; firmware 3.3.0-beta10 or newer is also found with another host name.
+
+To add an add-on by hand:
 
 1. Go to **Settings** > **Devices & Services** > **Add Integration**
 2. Search for **IthoWiFi**
