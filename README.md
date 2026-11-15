@@ -23,7 +23,19 @@ Home Assistant integration for the [IthoWiFi add-on](https://github.com/arjenhie
 
 ## Installation
 
-### HACS (recommended)
+### Marketplace (Home Assistant 2026.11 or newer, recommended)
+
+Since Home Assistant 2026.11 HACS is built in as the **Marketplace** (**Settings** > **Marketplace**). The first time you open it, accept the warning and connect your GitHub account when asked.
+
+1. Go to **Settings** > **Marketplace**
+2. Click **Add from link** (top right)
+3. Enter `arjenhiemstra/ithowifi-ha-integration` and click **Add** (choose type **Integration** if asked)
+4. Select **IthoWiFi** in the list and click **Install**, then confirm the version
+5. Restart Home Assistant if the Marketplace asks for it
+
+If you installed this integration through HACS before, the Marketplace takes it over during the update, including updates.
+
+### HACS (Home Assistant 2026.10 or older)
 
 1. Open HACS in Home Assistant
 2. Go to **Integrations**
