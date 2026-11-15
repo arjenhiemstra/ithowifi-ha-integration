@@ -1,6 +1,7 @@
 {
   "domain": "itho_wifi",
   "name": "IthoWiFi",
+  "categories": ["climate.fans_ventilation"],
   "codeowners": ["@arjenhiemstra"],
   "config_flow": true,
   "documentation": "https://github.com/arjenhiemstra/ithowifi-ha-integration",
