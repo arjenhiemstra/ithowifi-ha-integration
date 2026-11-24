@@ -23,6 +23,7 @@ API_RF_DEMAND = "/api/v2/rfremote/demand"
 API_RF_SETPOINT = "/api/v2/rfremote/setpoint"
 API_DEBUG = "/api/v2/debug"
 API_OTA = "/api/v2/ota"
+API_KWHMETERS = "/api/v2/kwhmeters"
 
 # Fan preset modes
 PRESET_LOW = "low"
@@ -126,3 +127,5 @@ DIAGNOSTIC_KEYS = {
 UPDATE_INTERVAL_STATUS = 10
 UPDATE_INTERVAL_DEVICEINFO = 300
 UPDATE_INTERVAL_REMOTES = 30
+# RF kWh meters: the add-on polls them over RF on its own interval, 30 s is enough here
+UPDATE_INTERVAL_KWHMETERS = 30

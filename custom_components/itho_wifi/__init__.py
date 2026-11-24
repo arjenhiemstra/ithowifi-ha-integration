@@ -16,6 +16,7 @@ from .repairs import async_check_spider_issues
 from .const import CONF_RF_SOURCE, CONF_RF_SOURCE_ID, DOMAIN
 from .coordinator import (
     IthoDeviceInfoCoordinator,
+    IthoKwhMetersCoordinator,
     IthoRemotesCoordinator,
     IthoRFStatusCoordinator,
     IthoStatusCoordinator,
@@ -98,6 +99,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if joined_rf_source_ids(remotes_coordinator.data):
         await rfstatus_coordinator.async_refresh()
 
+    # RF kWh meters (Itho/Klimaatgarant) the add-on polls over RF. First fetch
+    # may fail (older firmware, no RF module): the entities then simply stay away.
+    kwh_coordinator = IthoKwhMetersCoordinator(hass, api)
+    try:
+        await kwh_coordinator.async_refresh()
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Initial kWh meters fetch failed: %s", err)
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "api": api,
@@ -105,6 +114,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "device_coordinator": device_coordinator,
         "remotes_coordinator": remotes_coordinator,
         "rfstatus_coordinator": rfstatus_coordinator,
+        "kwh_coordinator": kwh_coordinator,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -46,9 +46,11 @@ from .const import (
 )
 from .coordinator import (
     IthoDeviceInfoCoordinator,
+    IthoKwhMetersCoordinator,
     IthoRemotesCoordinator,
     IthoRFStatusCoordinator,
     IthoStatusCoordinator,
+    configured_kwh_meters,
     joined_rf_source_ids,
 )
 from .entity import IthoEntity
@@ -623,6 +625,22 @@ async def async_setup_entry(
         # After the main entities: these refer to the main device, which those create
         entities.extend(_new_rf_source_sensors())
 
+    # RF kWh meters the add-on polls (configured on its kWh meters page): one
+    # sub-device per meter with an energy sensor per counter, added as the
+    # meters answer. The coordinator only polls while it has listeners.
+    kwh_coord: IthoKwhMetersCoordinator | None = data.get("kwh_coordinator")
+    if kwh_coord is not None and kwh_coord.supported:
+        known_kwh: set[str] = set()
+
+        @callback
+        def _add_kwh_sensors() -> None:
+            new = _build_kwh_sensors(kwh_coord, device_coord, known_kwh)
+            if new:
+                async_add_entities(new)
+
+        entry.async_on_unload(kwh_coord.async_add_listener(_add_kwh_sensors))
+        entities.extend(_build_kwh_sensors(kwh_coord, device_coord, known_kwh))
+
     async_add_entities(entities)
 
 
@@ -1103,3 +1121,122 @@ class IthoRFSourceSensor(CoordinatorEntity[IthoRFStatusCoordinator], SensorEntit
     def native_value(self) -> Any:
         """Return the value."""
         return self._value()
+
+
+def _build_kwh_sensors(
+    kwh_coord: IthoKwhMetersCoordinator,
+    device_coord: IthoDeviceInfoCoordinator,
+    known: set[str],
+) -> list[SensorEntity]:
+    """Create energy sensors for configured kWh meters that have answered.
+
+    A counter that is still zero gets no entity (single-phase meters only fill
+    the first one); it is added once it carries a value.
+    """
+    out: list[SensorEntity] = []
+    for meter_id, meter in configured_kwh_meters(kwh_coord.data).items():
+        if not meter.get("lastseen"):
+            continue
+        for counter in (1, 2, 3):
+            key = f"e{counter}_kwh"
+            uid = f"{meter_id}:{key}"
+            if uid in known or (counter > 1 and not meter.get(key)):
+                continue
+            known.add(uid)
+            out.append(IthoKwhMeterSensor(kwh_coord, device_coord, meter_id, counter))
+        uid = f"{meter_id}:lastseen"
+        if uid not in known:
+            known.add(uid)
+            out.append(IthoKwhMeterLastSeenSensor(kwh_coord, device_coord, meter_id))
+    return out
+
+
+class _IthoKwhMeterBase(CoordinatorEntity[IthoKwhMetersCoordinator]):
+    """Entity of one RF kWh meter, exposed as its own device under the add-on."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: IthoKwhMetersCoordinator,
+        device_info_coordinator: IthoDeviceInfoCoordinator,
+        meter_id: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._device_info_coordinator = device_info_coordinator
+        self._meter_id = meter_id
+        hwid = (device_info_coordinator.data or {}).get("add-on_hwid", "itho")
+        self._device_uid = f"{hwid}_kwhmeter_{meter_id.replace(',', '')}"
+
+    def _meter(self) -> dict[str, Any]:
+        return ((self.coordinator.data or {}).get("kwhmeters") or {}).get(self._meter_id) or {}
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """One device per meter, named after the name given on the add-on."""
+        info = self._device_info_coordinator.data or {}
+        name = self._meter().get("name") or f"kWh meter {self._meter_id}"
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_uid)},
+            name=name,
+            manufacturer=MANUFACTURER,
+            model=f"RF kWh meter {self._meter_id}",
+            via_device=(DOMAIN, info.get("add-on_hwid", "unknown")),
+        )
+
+    @property
+    def available(self) -> bool:
+        """Available while the add-on lists the meter and has a reading."""
+        return super().available and bool(self._meter().get("lastseen"))
+
+
+class IthoKwhMeterSensor(_IthoKwhMeterBase, SensorEntity):
+    """One energy counter of an RF kWh meter."""
+
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 3
+
+    def __init__(
+        self,
+        coordinator: IthoKwhMetersCoordinator,
+        device_info_coordinator: IthoDeviceInfoCoordinator,
+        meter_id: str,
+        counter: int,
+    ) -> None:
+        super().__init__(coordinator, device_info_coordinator, meter_id)
+        self._key = f"e{counter}_kwh"
+        self._attr_unique_id = f"{self._device_uid}_{self._key}"
+        self._attr_name = f"Energy E{counter}"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the counter in kWh."""
+        value = self._meter().get(self._key)
+        return None if value is None else float(value)
+
+
+class IthoKwhMeterLastSeenSensor(_IthoKwhMeterBase, SensorEntity):
+    """Time of the last reply of an RF kWh meter."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_name = "Last reply"
+
+    def __init__(
+        self,
+        coordinator: IthoKwhMetersCoordinator,
+        device_info_coordinator: IthoDeviceInfoCoordinator,
+        meter_id: str,
+    ) -> None:
+        super().__init__(coordinator, device_info_coordinator, meter_id)
+        self._attr_unique_id = f"{self._device_uid}_lastseen"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the last reply time."""
+        ts = self._meter().get("lastseen")
+        if not ts:
+            return None
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc)

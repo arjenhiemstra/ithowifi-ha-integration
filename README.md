@@ -9,6 +9,7 @@ Home Assistant integration for the [IthoWiFi add-on](https://github.com/arjenhie
 - **Sensors** dynamically created based on your device type (temperature, humidity, fan speed, CO2, bypass position, etc.)
 - **Per-remote sensors** (opt-in, selectable in setup/options like the per-remote fans) for RF/virtual remotes that report data — a _receive_ remote (e.g. an RFT CO2) appears as its own sub-device with CO2, temperature, humidity, battery, last command and last-command-time sensors
 - **Itho Spider thermostats** as climate entities (room temperature, setpoint, heating on/off). Discover the Spider on the add-on's RF devices page first (firmware 3.3.0 or newer); Home Assistant then offers it under **Settings** > **Repairs**, or select it in the options flow
+- **RF kWh meters** (Itho/Klimaatgarant, add-on with RF module, firmware 3.4.0 or newer): every meter configured on the add-on's kWh meters page becomes its own sub-device with an energy sensor per counter (total increasing, usable in the Energy dashboard) and a last-reply time
 - **Diagnostic sensors** for error codes, operation hours, startup counter, and more
 - **Timer buttons** for timer1, timer2, timer3 (cook30/cook60 for DemandFlow/QualityFlow devices)
 - **Fan demand slider** for direct speed control (not on a DemandFlow: its remote has no demand, medium or auto, so those controls are left out)

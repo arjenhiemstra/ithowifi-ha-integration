@@ -16,6 +16,7 @@ from .api import IthoWiFiApi, IthoWiFiApiError, IthoWiFiConnectionError, IthoWiF
 from .const import (
     DOMAIN,
     UPDATE_INTERVAL_DEVICEINFO,
+    UPDATE_INTERVAL_KWHMETERS,
     UPDATE_INTERVAL_REMOTES,
     UPDATE_INTERVAL_STATUS,
 )
@@ -236,3 +237,49 @@ class IthoRFStatusCoordinator(IthoCoordinator[dict[str, dict[str, Any]]]):
         except (IthoWiFiConnectionError, IthoWiFiApiError) as err:
             raise UpdateFailed(f"RF status error: {err}") from err
         return {src["id"]: src for src in rfstatus.get("sources", []) if src.get("id")}
+
+
+class IthoKwhMetersCoordinator(IthoCoordinator[dict[str, Any]]):
+    """Polls /api/v2/kwhmeters: the RF kWh meters the add-on reads (firmware 3.4.0 or newer).
+
+    Data: {"enabled": 0|1, "interval": s, "kwhmeters": {id: {id, name, e1_kwh, e2_kwh,
+    e3_kwh, lastseen, frames, configured}}}. Older firmware has no endpoint: the
+    coordinator then reports `supported = False` and stays idle.
+    """
+
+    def __init__(self, hass: HomeAssistant, api: IthoWiFiApi) -> None:
+        """Initialize the kWh meters coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_kwhmeters",
+            update_interval=timedelta(seconds=UPDATE_INTERVAL_KWHMETERS),
+        )
+        self.api = api
+        self.ota_in_progress = False
+        self.supported = True
+
+    async def _async_fetch(self) -> dict[str, Any]:
+        """Fetch the kWh meters."""
+        if self.ota_in_progress:
+            return self.data or {}
+        try:
+            data = await self.api.get_kwhmeters()
+        except IthoWiFiNotFoundError:
+            self.supported = False
+            self.update_interval = None
+            return {}
+        except (IthoWiFiConnectionError, IthoWiFiApiError) as err:
+            raise UpdateFailed(f"kWh meters error: {err}") from err
+        return data or {}
+
+
+def configured_kwh_meters(data: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    """Return the configured meters keyed by id, empty when the feature is off."""
+    if not data or int(data.get("enabled", 0) or 0) != 1:
+        return {}
+    return {
+        mid: m
+        for mid, m in (data.get("kwhmeters") or {}).items()
+        if isinstance(m, dict) and m.get("configured", True)
+    }

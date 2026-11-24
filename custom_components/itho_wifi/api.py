@@ -13,6 +13,7 @@ from .const import (
     API_DEBUG,
     API_DEVICEINFO,
     API_ITHOSTATUS,
+    API_KWHMETERS,
     API_LASTCMD,
     API_OTA,
     API_QUEUE,
@@ -184,6 +185,14 @@ class IthoWiFiApi:
         if (name or source_id) and "data" in rfstatus:
             return rfstatus.get("data", {})
         return rfstatus
+
+    async def get_kwhmeters(self) -> dict[str, Any]:
+        """Get the RF kWh meters (firmware 3.4.0 or newer).
+
+        Returns {"enabled": 0|1, "interval": s, "kwhmeters": {id: {...}}}; the
+        meters are keyed by their RF id as hex bytes ("77,FC,4D").
+        """
+        return await self._request("GET", API_KWHMETERS)
 
     async def get_lastcmd(self) -> dict[str, Any]:
         """Get last executed command."""
